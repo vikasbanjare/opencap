@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "opencap-web",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "dev"],
+      "port": 5173
+    },
+    {
+      "name": "opencap-api",
+      "runtimeExecutable": "server/.venv/bin/uvicorn",
+      "runtimeArgs": ["main:app", "--port", "8787", "--app-dir", "server"],
+      "port": 8787
+    }
+  ]
+}
