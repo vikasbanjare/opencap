@@ -173,6 +173,20 @@ def transcribe_job(pid: str, language: Optional[str] = None):
         write_meta(d, transcribeStatus="error", transcribeError=str(e))
 
 
+@app.on_event("startup")
+def warm_up():
+    # Load Whisper once at boot (about a minute on first use) so the first upload is not stuck
+    # at "running" for that long, and re-queue jobs a restart left behind. ponytail: polls on
+    # boot only; a real queue if jobs ever outlive the process on purpose.
+    def go():
+        for d in DATA.iterdir():
+            m = d / "meta.json"
+            if m.is_file() and json.loads(m.read_text()).get("transcribeStatus") == "running":
+                threading.Thread(target=transcribe_job, args=(d.name,), daemon=True).start()
+        get_model()
+    threading.Thread(target=go, daemon=True).start()
+
+
 @app.post("/api/projects/{pid}/transcribe")
 def retranscribe(pid: str, language: Optional[str] = Form(None)):
     project_dir(pid)
