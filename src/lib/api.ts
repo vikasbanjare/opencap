@@ -27,6 +27,12 @@ export const api = {
   audioTool: (id: string, tool: 'denoise' | 'normalize' | 'enhance') => fetch(`/api/projects/${id}/audio/${tool}`, { method: 'POST' }).then(j<{ url: string }>),
   saveRender: (id: string, blob: Blob) => { const fd = new FormData(); fd.append('file', blob, 'render.mp4'); return fetch(`/api/projects/${id}/renders`, { method: 'POST', body: fd }).then(j<{ url: string; name: string }>) },
   renders: (id: string) => fetch(`/api/projects/${id}/renders`).then(j<{ url: string; name: string; size: number }[]>),
+  getState: (id: string) => fetch(`/api/projects/${id}/state`).then(j<Record<string, unknown> | null>),
+  uploadAsset: (id: string, file: File) => { const fd = new FormData(); fd.append('file', file); return fetch(`/api/projects/${id}/assets`, { method: 'POST', body: fd }).then(j<{ url: string; kind: 'image' | 'video' | 'audio'; name: string; duration?: number; width?: number; height?: number }>) },
+  ttsVoices: () => fetch('/api/tts/voices').then(j<{ voices: string[]; ready: boolean }>),
+  tts: (text: string, voice: string, speed: number) => fetch('/api/tts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, voice, speed }) }).then(j<{ url: string; duration: number }>),
+  translateLanguages: () => fetch('/api/translate/languages').then(j<{ ready: boolean; available: string[]; installed: string[][] }>),
+  translate: (texts: string[], source: string, target: string) => fetch('/api/translate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ texts, source, target }) }).then(j<{ texts: string[] }>),
   exportServer: (id: string, cuts: { start: number; end: number }[]) =>
     fetch(`/api/projects/${id}/export`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ cuts }) }).then(j<{ url: string }>),
 }

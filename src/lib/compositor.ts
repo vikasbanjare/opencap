@@ -11,7 +11,12 @@ export type FrameInput = {
   zooms: ZoomKey[]
   pan: number
   images: Map<string, HTMLImageElement>
+  videos?: Map<string, HTMLVideoElement>
 }
+
+/** Visible video overlays at t with the source time each should show. */
+export const videoOverlaysAt = (overlays: Overlay[], t: number) =>
+  overlays.filter(o => o.kind === 'video' && o.src && t >= o.start && t < o.end).map(o => ({ o, srcT: (t - o.start) % Math.max(0.1, o.srcDuration ?? 1e9) }))
 
 /** Draw one composed frame (reframe crop + zoom + captions + overlays). Used by preview and export alike. */
 export function drawFrame(ctx: CanvasRenderingContext2D, W: number, H: number, f: FrameInput) {
@@ -26,6 +31,13 @@ export function drawFrame(ctx: CanvasRenderingContext2D, W: number, H: number, f
   const sy = (f.srcH - sh) * (srcR > outR ? 0.5 : f.pan)
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H)
   try { ctx.drawImage(f.src, sx, sy, sw, sh, 0, 0, W, H) } catch { /* frame not ready */ }
+  // full-frame B-roll replaces the picture (cover crop, same zoom), pip is drawn with the other overlays
+  for (const { o } of videoOverlaysAt(f.overlays, f.t)) {
+    const el = f.videos?.get(o.src!); if (!el || el.readyState < 2 || o.fit === 'pip') continue
+    const vw = el.videoWidth, vh = el.videoHeight, r = vw / vh
+    let cw = vw, ch = vh; if (r > outR) cw = vh * outR; else ch = vw / outR
+    try { ctx.drawImage(el, (vw - cw) / 2, (vh - ch) / 2, cw, ch, 0, 0, W, H) } catch { /* not ready */ }
+  }
   if (f.captionsOn) drawCaptions(ctx, f.t, f.cards, f.style, W, H)
   drawOverlays(ctx, W, H, f)
 }
@@ -40,7 +52,18 @@ function drawOverlays(ctx: CanvasRenderingContext2D, W: number, H: number, f: Fr
     ctx.save(); ctx.globalAlpha = Math.min(1, age / 0.08)
     const x = o.x * W, y = o.y * H
     ctx.translate(x, y); ctx.scale(s, s); ctx.translate(-x, -y)
-    if (o.kind === 'image' && o.src) {
+    if (o.kind === 'video' && o.src) {
+      if (o.fit !== 'pip') { ctx.restore(); continue }
+      const el = f.videos?.get(o.src)
+      if (el && el.readyState >= 2) {
+        const w = (o.w ?? 0.45) * W, h = w * el.videoHeight / el.videoWidth
+        ctx.save(); const r = 24 * k; const X = x - w / 2, Y = y - h / 2
+        ctx.beginPath(); ctx.moveTo(X + r, Y); ctx.arcTo(X + w, Y, X + w, Y + h, r); ctx.arcTo(X + w, Y + h, X, Y + h, r); ctx.arcTo(X, Y + h, X, Y, r); ctx.arcTo(X, Y, X + w, Y, r); ctx.closePath()
+        ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 24 * k; ctx.fillStyle = '#000'; ctx.fill(); ctx.shadowColor = 'transparent'; ctx.clip()
+        try { ctx.drawImage(el, X, Y, w, h) } catch { /* not ready */ }
+        ctx.restore()
+      }
+    } else if (o.kind === 'image' && o.src) {
       const img = f.images.get(o.src)
       if (img && img.complete) { const w = (o.w ?? 0.4) * W, h = w * img.naturalHeight / img.naturalWidth; ctx.drawImage(img, x - w / 2, y - h / 2, w, h) }
     } else {

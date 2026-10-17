@@ -10,14 +10,14 @@ import { fmtTime, outDuration, mergeCuts, cutsFromWords } from '../lib/timeline'
 export function Editor({ project, onBack }: { project: ProjectMeta; onBack: () => void }) {
   const s = useEditor()
   const videoRef = useRef<HTMLVideoElement>(null)
-  useEffect(() => { s.load(project) /* eslint-disable-line react-hooks/exhaustive-deps */ }, [project.id])
+  useEffect(() => { api.getState(project.id).then(st => s.load(project, st)).catch(() => s.load(project)) /* eslint-disable-line react-hooks/exhaustive-deps */ }, [project.id])
 
   // poll while transcribing
   useEffect(() => {
     if (project.transcribeStatus !== 'running') return
     const id = setInterval(async () => {
       const st = await api.status(project.id)
-      if (st.transcribeStatus !== 'running') { clearInterval(id); const m = await api.get(project.id); s.load(m) }
+      if (st.transcribeStatus !== 'running') { clearInterval(id); const m = await api.get(project.id); s.load(m, await api.getState(project.id).catch(() => null)) }
     }, 2000)
     return () => clearInterval(id)
   }, [project.id, project.transcribeStatus]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -54,7 +54,7 @@ export function Editor({ project, onBack }: { project: ProjectMeta; onBack: () =
           {s.tab === 'captions' && <CaptionsPanel cards={cards} seek={seek} />}
           {s.tab === 'style' && <StylePanel cards={cards} />}
           {s.tab === 'elements' && <ElementsPanel />}
-          {s.tab === 'audio' && <AudioPanel />}
+          {s.tab === 'audio' && <AudioPanel cards={cards} />}
           {s.tab === 'export' && <ExportPanel cards={cards} />}
         </aside>
         <main><Preview cards={cards} videoRef={videoRef} /></main>

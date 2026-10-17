@@ -256,6 +256,109 @@ def export_server(pid: str, payload: dict):
     return {"url": f"/media/{pid}/export.mp4"}
 
 
+# ---------- project state (edits) ----------
+
+@app.put("/api/projects/{pid}/state")
+async def put_state(pid: str, payload: dict):
+    d = project_dir(pid)
+    (d / "state.json").write_text(json.dumps(payload, ensure_ascii=False))
+    return {"ok": True}
+
+
+@app.get("/api/projects/{pid}/state")
+def get_state(pid: str):
+    d = project_dir(pid)
+    return json.loads((d / "state.json").read_text()) if (d / "state.json").exists() else None
+
+
+# ---------- assets: B-roll clips, images, music ----------
+
+@app.post("/api/projects/{pid}/assets")
+async def upload_asset(pid: str, file: UploadFile = File(...)):
+    d = project_dir(pid)
+    (d / "assets").mkdir(exist_ok=True)
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", file.filename or "asset")
+    name = f"{uuid.uuid4().hex[:6]}-{safe}"
+    dst = d / "assets" / name
+    with dst.open("wb") as f:
+        shutil.copyfileobj(file.file, f)
+    kind = "image" if dst.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp", ".gif") else "audio" if dst.suffix.lower() in (".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac") else "video"
+    info = {}
+    if kind == "video":
+        # browser-safe proxy (H.264/AAC mp4, max 1280 tall) so preview and export can seek it
+        proxy = dst.with_suffix(".proxy.mp4")
+        run(["ffmpeg", "-v", "error", "-y", "-i", str(dst), "-vf", "scale='min(1280,iw)':-2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
+             "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(proxy)], timeout=1800)
+        info = probe(proxy); name = proxy.name
+    elif kind == "audio":
+        info = probe(dst)
+    return {"url": f"/media/{pid}/assets/{name}", "kind": kind, "name": safe, **info}
+
+
+# ---------- text to speech (Kokoro-82M, ONNX, offline) ----------
+
+_kokoro = None
+KOKORO_VOICES = ["af_heart", "af_bella", "af_nicole", "af_sarah", "af_sky", "am_adam", "am_michael", "bf_emma", "bf_isabella", "bm_george", "bm_lewis"]
+
+
+def get_kokoro():
+    global _kokoro
+    if _kokoro is None:
+        from kokoro_onnx import Kokoro
+        m = ROOT / "models"
+        if not (m / "kokoro-v1.0.onnx").exists():
+            raise HTTPException(503, "Kokoro model missing: download kokoro-v1.0.onnx and voices-v1.0.bin into server/models/")
+        _kokoro = Kokoro(str(m / "kokoro-v1.0.onnx"), str(m / "voices-v1.0.bin"))
+    return _kokoro
+
+
+@app.get("/api/tts/voices")
+def tts_voices():
+    return {"voices": KOKORO_VOICES, "ready": (ROOT / "models" / "kokoro-v1.0.onnx").exists()}
+
+
+@app.post("/api/tts")
+def tts(payload: dict):
+    """payload: {text, voice='af_heart', speed=1.0, lang='en-us'} -> wav url (cached by content hash)."""
+    import hashlib, wave, numpy as np
+    text = (payload.get("text") or "").strip()
+    if not text:
+        raise HTTPException(400, "empty text")
+    voice = payload.get("voice", "af_heart"); speed = float(payload.get("speed", 1.0)); lang = payload.get("lang", "en-us")
+    key = hashlib.sha1(f"{text}|{voice}|{speed}|{lang}".encode()).hexdigest()[:16]
+    out_dir = DATA / "_tts"; out_dir.mkdir(exist_ok=True)
+    out = out_dir / f"{key}.wav"
+    if not out.exists():
+        samples, sr = get_kokoro().create(text, voice=voice, speed=speed, lang=lang)
+        pcm = (np.clip(samples, -1, 1) * 32767).astype(np.int16)
+        with wave.open(str(out), "wb") as wf:
+            wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(sr); wf.writeframes(pcm.tobytes())
+    info = probe(out)
+    return {"url": f"/media/_tts/{out.name}", "duration": info["duration"]}
+
+
+# ---------- translation (Argos packs on CTranslate2, offline after first download) ----------
+
+@app.get("/api/translate/languages")
+def translate_languages():
+    import translate as T
+    try:
+        avail = T.available_targets("en")
+        return {"ready": bool(avail), "available": avail, "installed": sorted(p.name.split("_") for p in (ROOT / "models" / "argos").glob("*_*"))}
+    except Exception as e:
+        return {"ready": False, "error": str(e), "available": [], "installed": []}
+
+
+@app.post("/api/translate")
+def translate(payload: dict):
+    """payload: {texts:[str], source:'en', target:'es'}. First use of a pair downloads its pack (~100 MB)."""
+    import translate as T
+    try:
+        return {"texts": T.translate_texts(ROOT / "models", payload.get("texts", []), payload.get("source", "en"), payload["target"])}
+    except FileNotFoundError as e:
+        raise HTTPException(400, str(e))
+
+
 @app.post("/api/projects/{pid}/renders")
 async def save_render(pid: str, file: UploadFile = File(...)):
     """The browser renders the MP4 itself; this keeps a copy in the project so it can be re-downloaded or shared."""

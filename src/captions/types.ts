@@ -50,13 +50,18 @@ export type ZoomKey = { time: number; scale: number; durationMs: number } // pun
 
 export type Overlay = {
   id: string
-  kind: 'text' | 'emoji' | 'image'
+  kind: 'text' | 'emoji' | 'image' | 'video'
   text?: string
   src?: string
+  fit?: 'cover' | 'pip'         // video: full-frame B-roll or picture-in-picture
+  srcDuration?: number
+  muted?: boolean
   x: number; y: number          // 0..1 of frame
-  w?: number                    // 0..1 of frame width (image)
+  w?: number                    // 0..1 of frame width (image / pip)
   size: number                  // px at 1080 width
   color: string
   font: string
   start: number; end: number
 }
+
+export type Music = { url: string; name: string; gainDb: number; duck: boolean; duckDb: number; start: number }

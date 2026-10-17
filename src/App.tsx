@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react'
 import { api, type ProjectMeta } from './lib/api'
 import { Editor } from './editor/Editor'
 import { fmtTime } from './lib/timeline'
+import { Record } from './Record'
 
 export default function App() {
   const [projects, setProjects] = useState<ProjectMeta[]>([])
   const [open, setOpen] = useState<ProjectMeta | null>(null)
   const [upl, setUpl] = useState<number | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [recording, setRecording] = useState(false)
   const refresh = () => api.list().then(setProjects).catch(e => setErr(`API not reachable: ${e.message}. Start the server (see README).`))
   useEffect(() => { refresh() }, [])
   // deep link ?p=<id>
@@ -27,9 +29,11 @@ export default function App() {
         <input type="file" accept="video/*,audio/*" hidden onChange={e => onFiles(e.target.files)} />
         {upl == null ? <><strong>Drop a video</strong> or click to choose<br /><span className="muted">mp4 · mov · mkv · webm — stays on this machine. Whisper transcribes it automatically.</span></> : <>Uploading {(upl * 100).toFixed(0)}%</>}
       </label>
-      <label className="btn record">
-        <input type="file" accept="video/*" capture="user" hidden onChange={e => onFiles(e.target.files)} />📷 Record with camera (mobile)
-      </label>
+      <div className="row">
+        <button onClick={() => setRecording(true)}>● Record camera or screen</button>
+        <label className="btn"><input type="file" accept="video/*" capture="user" hidden onChange={e => onFiles(e.target.files)} />📷 Phone camera</label>
+      </div>
+      {recording && <Record onClose={() => setRecording(false)} onDone={f => { setRecording(false); const dt = new DataTransfer(); dt.items.add(f); onFiles(dt.files) }} />}
       {err && <p className="warn">{err}</p>}
       <h2>Projects</h2>
       <ul className="projects">

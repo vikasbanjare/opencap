@@ -1,19 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useEditor, aspectSize, type Aspect } from '../store'
+import { useEditor, aspectSize, mediaCache, ensureMedia, type Aspect } from '../store'
 import { PRESETS } from '../captions/presets'
-import type { Card, CaptionStyle, Overlay } from '../captions/types'
+import type { Card, CaptionStyle, Overlay, Word } from '../captions/types'
 import { fillerIndices, silenceCuts, mergeCuts, autoZooms, cutsFromWords, fmtTime } from '../lib/timeline'
 import { api, download } from '../lib/api'
 import { exportMp4, webCodecsOk } from '../lib/export'
-import { imageCache } from './Preview'
 
 const FONTS = ['Inter', 'Oswald', 'Montserrat', 'Bebas Neue', 'Poppins', 'Nunito', 'Playfair Display', 'EB Garamond', 'Caveat', 'Space Mono', 'Anton']
+const LANGS: Record<string, string> = { en: 'English', es: 'Spanish', fr: 'French', de: 'German', pt: 'Portuguese', it: 'Italian', hi: 'Hindi', ar: 'Arabic', zh: 'Chinese', ja: 'Japanese', ko: 'Korean', ru: 'Russian', tr: 'Turkish', id: 'Indonesian', nl: 'Dutch', pl: 'Polish', uk: 'Ukrainian', vi: 'Vietnamese', th: 'Thai', sv: 'Swedish' }
 
 // ---------------- Captions ----------------
 export function CaptionsPanel({ cards, seek }: { cards: Card[]; seek: (t: number) => void }) {
   const s = useEditor()
   const [editing, setEditing] = useState<number | null>(null)
   const [gap, setGap] = useState(0.8)
+  const [langs, setLangs] = useState<string[]>([])
+  const [busy, setBusy] = useState<string | null>(null)
+  useEffect(() => { api.translateLanguages().then(r => setLangs(r.available)).catch(() => setLangs([])) }, [])
   const fillers = useMemo(() => fillerIndices(s.words).filter(i => !s.words[i].deleted), [s.words])
   const deletedN = s.words.filter(w => w.deleted).length
   const status = s.project?.transcribeStatus
@@ -29,11 +32,38 @@ export function CaptionsPanel({ cards, seek }: { cards: Card[]; seek: (t: number
   const toggleDelete = (i: number) => s.setWords(ws => ws.map((w, j) => j === i ? { ...w, deleted: !w.deleted } : w))
   const toggleEmph = (i: number) => s.setWords(ws => ws.map((w, j) => j === i ? { ...w, emph: !w.emph } : w))
   const edit = (i: number, text: string) => { s.setWords(ws => ws.map((w, j) => j === i ? { ...w, text } : w)); setEditing(null) }
+  const autoEdit = () => {
+    s.setWords(ws => ws.map((w, i) => fillers.includes(i) ? { ...w, deleted: true } : w))
+    s.set({ cuts: mergeCuts([...s.cuts, ...silenceCuts(s.words, 0.8, 0.15, s.project?.duration)]), autoZoom: true, zooms: autoZooms(cards) })
+  }
+  const translate = async (target: string) => {
+    if (!s.project || !target) return
+    setBusy(target)
+    try {
+      // translate whole sentences (consecutive cards up to . ! ?) so the MT model sees context,
+      // then spread the translated words evenly over each sentence's time span
+      const groups: Card[][] = [[]]
+      for (const c of cards) { groups[groups.length - 1].push(c); if (/[.!?]$/.test(c.words[c.words.length - 1].text)) groups.push([]) }
+      const sents = groups.filter(g => g.length)
+      const r = await api.translate(sents.map(g => g.flatMap(c => c.words.map(w => w.text)).join(' ')), s.project.language ?? 'en', target)
+      const out: Word[] = []
+      sents.forEach((g, gi) => {
+        const toks = r.texts[gi].split(/\s+/).filter(Boolean)
+        const t0 = g[0].words[0].start, t1 = g[g.length - 1].words[g[g.length - 1].words.length - 1].end
+        const span = (t1 - t0) / Math.max(1, toks.length)
+        toks.forEach((t, k) => out.push({ text: t, start: t0 + k * span, end: t0 + (k + 1) * span }))
+      })
+      localStorage.setItem(`opencap:${s.project.id}:original`, JSON.stringify(s.words))
+      s.setWords(() => out)
+    } catch (e) { alert(String(e)) } finally { setBusy(null) }
+  }
+  const original = s.project && localStorage.getItem(`opencap:${s.project.id}:original`)
 
   return (
     <div className="panel">
       <h3>Captions <span className="muted">{s.words.length} words · {cards.length} cards · {s.project?.language}</span></h3>
       <div className="row wrap">
+        <button className="primary" onClick={autoEdit} title="remove fillers, cut silences over 0.8 s, add punch-ins">✦ Auto edit</button>
         <button disabled={!fillers.length} onClick={() => s.setWords(ws => ws.map((w, i) => fillers.includes(i) ? { ...w, deleted: true } : w))}>Remove fillers ({fillers.length})</button>
         <button onClick={() => s.set({ cuts: mergeCuts([...s.cuts, ...silenceCuts(s.words, gap, 0.15, s.project?.duration)]) })}>Cut silences &gt; <input type="number" step="0.1" min="0.3" value={gap} onChange={e => setGap(+e.target.value)} style={{ width: 48 }} />s</button>
         <button disabled={!deletedN} onClick={() => s.setWords(ws => ws.map(w => ({ ...w, deleted: false })))}>Restore {deletedN} words</button>
@@ -43,7 +73,11 @@ export function CaptionsPanel({ cards, seek }: { cards: Card[]; seek: (t: number
         <label>Words / card <input type="range" min={1} max={6} value={s.style.chunk.maxWords} onChange={e => s.setStyle(st => ({ ...st, chunk: { ...st.chunk, maxWords: +e.target.value } }))} /> {s.style.chunk.maxWords}</label>
         <label>Max chars <input type="range" min={8} max={40} value={s.style.chunk.maxChars} onChange={e => s.setStyle(st => ({ ...st, chunk: { ...st.chunk, maxChars: +e.target.value } }))} /> {s.style.chunk.maxChars}</label>
       </div>
-      <p className="muted small">Click a word to seek. Double-click to edit. Delete/Backspace removes it from the video (text-based cut). E marks the keyword.</p>
+      <div className="row">
+        <label>Translate to <select disabled={!!busy || !langs.length} defaultValue="" onChange={e => translate(e.target.value)}><option value="" disabled>{busy ? `translating → ${busy}…` : langs.length ? 'choose language' : 'translation unavailable'}</option>{langs.filter(l => l !== (s.project?.language ?? 'en')).map(l => <option key={l} value={l}>{LANGS[l] ?? l}</option>)}</select></label>
+        {original && <button onClick={() => { s.setWords(() => JSON.parse(original)); localStorage.removeItem(`opencap:${s.project!.id}:original`) }}>Revert to original</button>}
+      </div>
+      <p className="muted small">Click a word to seek. Double-click to edit. Delete/Backspace removes it from the video (text-based cut). E marks the keyword. Translation runs offline; the first use of a language downloads its pack.</p>
       <div className="transcript" tabIndex={0} onKeyDown={e => {
         if (s.selected == null) return
         if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); toggleDelete(s.selected) }
@@ -141,52 +175,105 @@ export function ElementsPanel() {
   const t = s.time
   const add = (o: Partial<Overlay> & { kind: Overlay['kind'] }) => s.addOverlay({ id: Math.random().toString(36).slice(2, 8), x: 0.5, y: 0.3, size: 64, color: '#FFFFFF', font: 'Inter', start: t, end: Math.min((s.project?.duration ?? t + 2), t + 2), text: '', ...o })
   const sel = s.overlays.find(o => o.id === s.selectedOverlay)
+  const [busy, setBusy] = useState(false)
   const EMOJI = ['🔥', '😂', '👀', '💰', '✅', '❌', '👉', '🚀', '💡', '⚠️', '❤️', '🤯', '🎯', '📈', '🏆', '✨']
+  const uploadMedia = async (f: File | undefined, kind: 'image' | 'video') => {
+    if (!f || !s.project) return
+    setBusy(true)
+    try {
+      const a = await api.uploadAsset(s.project.id, f)
+      const o: Overlay = { id: Math.random().toString(36).slice(2, 8), kind, src: a.url, x: 0.5, y: kind === 'video' ? 0.5 : 0.3, w: kind === 'video' ? 0.45 : 0.4, size: 64, color: '#fff', font: 'Inter', start: t, end: Math.min(s.project.duration, t + (kind === 'video' ? Math.min(a.duration ?? 3, 3) : 2)), fit: 'cover', srcDuration: a.duration }
+      ensureMedia(o); s.addOverlay(o)
+    } catch (e) { alert(String(e)) } finally { setBusy(false) }
+  }
   return (
     <div className="panel">
       <h3>Elements</h3>
       <div className="row wrap">
         <button onClick={() => add({ kind: 'text', text: 'Your text' })}>+ Text</button>
-        <label className="btn">+ Image<input type="file" accept="image/*" hidden onChange={e => { const f = e.target.files?.[0]; if (!f) return; const url = URL.createObjectURL(f); const im = new Image(); im.src = url; imageCache.set(url, im); add({ kind: 'image', src: url, w: 0.4 }) }} /></label>
+        <label className="btn">+ Image<input type="file" accept="image/*" hidden onChange={e => uploadMedia(e.target.files?.[0], 'image')} /></label>
+        <label className="btn">{busy ? '…' : '+ B-roll clip'}<input type="file" accept="video/*" hidden onChange={e => uploadMedia(e.target.files?.[0], 'video')} /></label>
       </div>
       <div className="emoji">{EMOJI.map(e => <button key={e} onClick={() => add({ kind: 'emoji', text: e, size: 120 })}>{e}</button>)}</div>
-      <p className="muted small">Drag elements on the preview. They pop in with easeOutBack (pattern G sticker pop).</p>
+      <p className="muted small">B-roll clips drop in at the playhead: full frame replaces the picture while the speaker's audio continues (Captions.ai style); picture-in-picture floats over it. Drag elements on the preview.</p>
       {sel && <div className="grid2">
-        {sel.kind !== 'image' && <label>Text <input value={sel.text} onChange={e => s.updateOverlay(sel.id, { text: e.target.value })} /></label>}
+        {(sel.kind === 'text' || sel.kind === 'emoji') && <label>Text <input value={sel.text} onChange={e => s.updateOverlay(sel.id, { text: e.target.value })} /></label>}
         {sel.kind === 'text' && <label>Font <select value={sel.font} onChange={e => s.updateOverlay(sel.id, { font: e.target.value })}>{FONTS.map(f => <option key={f}>{f}</option>)}</select></label>}
-        <label>Size <input type="range" min={20} max={300} value={sel.size} onChange={e => s.updateOverlay(sel.id, { size: +e.target.value })} /></label>
+        {(sel.kind === 'text' || sel.kind === 'emoji') && <label>Size <input type="range" min={20} max={300} value={sel.size} onChange={e => s.updateOverlay(sel.id, { size: +e.target.value })} /></label>}
         {sel.kind === 'text' && <label>Colour <input type="color" value={sel.color} onChange={e => s.updateOverlay(sel.id, { color: e.target.value })} /></label>}
-        {sel.kind === 'image' && <label>Width <input type="range" min={0.1} max={1} step={0.01} value={sel.w ?? 0.4} onChange={e => s.updateOverlay(sel.id, { w: +e.target.value })} /></label>}
+        {sel.kind === 'video' && <label>Fit <select value={sel.fit ?? 'cover'} onChange={e => s.updateOverlay(sel.id, { fit: e.target.value as 'cover' | 'pip' })}><option value="cover">full frame</option><option value="pip">picture in picture</option></select></label>}
+        {(sel.kind === 'image' || (sel.kind === 'video' && sel.fit === 'pip')) && <label>Width <input type="range" min={0.1} max={1} step={0.01} value={sel.w ?? 0.4} onChange={e => s.updateOverlay(sel.id, { w: +e.target.value })} /></label>}
         <label>Start <input type="number" step={0.1} value={sel.start.toFixed(1)} onChange={e => s.updateOverlay(sel.id, { start: +e.target.value })} /></label>
         <label>End <input type="number" step={0.1} value={sel.end.toFixed(1)} onChange={e => s.updateOverlay(sel.id, { end: +e.target.value })} /></label>
         <button onClick={() => s.updateOverlay(sel.id, { start: t })}>start = playhead</button>
         <button onClick={() => s.updateOverlay(sel.id, { end: t })}>end = playhead</button>
         <button className="danger" onClick={() => s.removeOverlay(sel.id)}>Delete element</button>
       </div>}
-      <ul className="list">{s.overlays.map(o => <li key={o.id} className={o.id === s.selectedOverlay ? 'on' : ''} onClick={() => s.set({ selectedOverlay: o.id })}>{o.kind === 'image' ? '🖼 image' : o.text} <span className="muted">{fmtTime(o.start)}–{fmtTime(o.end)}</span></li>)}</ul>
+      <ul className="list">{s.overlays.map(o => <li key={o.id} className={o.id === s.selectedOverlay ? 'on' : ''} onClick={() => s.set({ selectedOverlay: o.id })}>{o.kind === 'image' ? '🖼 image' : o.kind === 'video' ? `🎞 B-roll (${o.fit})` : o.text} <span className="muted">{fmtTime(o.start)}–{fmtTime(o.end)}</span></li>)}</ul>
     </div>
   )
 }
 
 // ---------------- Audio ----------------
-export function AudioPanel() {
+export function AudioPanel({ cards }: { cards: Card[] }) {
   const s = useEditor()
   const [busy, setBusy] = useState<string | null>(null)
+  const [voices, setVoices] = useState<{ voices: string[]; ready: boolean } | null>(null)
+  const [voice, setVoice] = useState('af_heart')
+  const [speed, setSpeed] = useState(1)
+  const [ttsText, setTtsText] = useState('')
+  const [tts, setTts] = useState<{ url: string; duration: number } | null>(null)
+  useEffect(() => { api.ttsVoices().then(setVoices).catch(() => setVoices({ voices: [], ready: false })) }, [])
+  useEffect(() => { if (!ttsText && cards.length) setTtsText(cards.map(c => c.words.map(w => w.text).join(' ')).join(' ')) }, [cards, ttsText])
   const run = async (tool: 'denoise' | 'normalize' | 'enhance') => { if (!s.project) return; setBusy(tool); try { const r = await api.audioTool(s.project.id, tool); s.set({ audioUrl: r.url }) } catch (e) { alert(String(e)) } finally { setBusy(null) } }
+  const addMusic = async (f: File | undefined) => { if (!f || !s.project) return; setBusy('music'); try { const a = await api.uploadAsset(s.project.id, f); s.set({ music: { url: a.url, name: a.name, gainDb: -16, duck: true, duckDb: -10, start: 0 } }) } catch (e) { alert(String(e)) } finally { setBusy(null) } }
+  const speak = async () => { setBusy('tts'); try { setTts(await api.tts(ttsText, voice, speed)) } catch (e) { alert(String(e)) } finally { setBusy(null) } }
   return (
     <div className="panel">
       <h3>Audio</h3>
-      <p className="muted small">Processed with ffmpeg on your machine. The result replaces the soundtrack in the export; listen below.</p>
+      <h4>Clean up <span className="muted">(ffmpeg, local)</span></h4>
       <div className="row wrap">
         <button disabled={!!busy} onClick={() => run('denoise')}>{busy === 'denoise' ? '…' : 'Denoise'}</button>
         <button disabled={!!busy} onClick={() => run('enhance')}>{busy === 'enhance' ? '…' : 'Enhance speech'}</button>
         <button disabled={!!busy} onClick={() => run('normalize')}>{busy === 'normalize' ? '…' : 'Normalise loudness'}</button>
         {s.audioUrl && <button onClick={() => s.set({ audioUrl: null })}>Use original</button>}
       </div>
-      {s.audioUrl && <audio controls src={s.audioUrl} style={{ width: '100%', marginTop: 8 }} />}
+      {s.audioUrl && <p className="muted small">Using processed track {s.audioUrl.split('/').pop()} in preview and export.</p>}
+
+      <h4>Music bed</h4>
+      <div className="row wrap">
+        <label className="btn">{busy === 'music' ? '…' : '+ Add music file'}<input type="file" accept="audio/*" hidden onChange={e => addMusic(e.target.files?.[0])} /></label>
+        {s.music && <button onClick={() => s.set({ music: null })}>Remove</button>}
+      </div>
+      {s.music && <div className="grid2">
+        <label>Level <input type="range" min={-40} max={0} value={s.music.gainDb} onChange={e => s.set({ music: { ...s.music!, gainDb: +e.target.value } })} /> {s.music.gainDb} dB</label>
+        <label>Duck under speech <input type="checkbox" checked={s.music.duck} onChange={e => s.set({ music: { ...s.music!, duck: e.target.checked } })} /></label>
+        <label>Duck by <input type="range" min={-24} max={0} value={s.music.duckDb} onChange={e => s.set({ music: { ...s.music!, duckDb: +e.target.value } })} /> {s.music.duckDb} dB</label>
+        <label>Starts at <input type="number" step={0.1} value={s.music.start} onChange={e => s.set({ music: { ...s.music!, start: +e.target.value } })} /> s</label>
+        <span className="muted small">{s.music.name}</span>
+      </div>}
+
+      <h4>Text to speech <span className="muted">(Kokoro-82M, offline)</span></h4>
+      {voices && !voices.ready && <p className="warn small">Kokoro model not downloaded yet: put kokoro-v1.0.onnx and voices-v1.0.bin in server/models/.</p>}
+      <textarea value={ttsText} onChange={e => setTtsText(e.target.value)} rows={4} style={{ width: '100%' }} />
+      <div className="row wrap">
+        <select value={voice} onChange={e => setVoice(e.target.value)}>{(voices?.voices ?? ['af_heart']).map(v => <option key={v}>{v}</option>)}</select>
+        <label>Speed <input type="range" min={0.6} max={1.5} step={0.05} value={speed} onChange={e => setSpeed(+e.target.value)} /> {speed.toFixed(2)}</label>
+        <button disabled={!!busy || !ttsText.trim()} onClick={speak}>{busy === 'tts' ? 'generating…' : 'Generate'}</button>
+      </div>
+      {tts && <div>
+        <audio controls src={tts.url} style={{ width: '100%' }} />
+        <div className="row wrap">
+          <button onClick={() => s.set({ audioUrl: tts.url })}>Use as voiceover (replace audio)</button>
+          <button onClick={() => s.set({ music: { url: tts.url, name: 'voiceover', gainDb: 0, duck: false, duckDb: 0, start: s.time } })}>Place at playhead as extra track</button>
+          <a className="btn" href={tts.url} download>Download wav</a>
+        </div>
+      </div>}
+      <p className="muted small">Voice cloning (AI twin) needs a multi-GB model (F5-TTS / XTTS). It is an optional plugin, see README.</p>
+
       <h4>Transcription</h4>
       <div className="row"><button onClick={() => s.project && api.retranscribe(s.project.id).then(() => location.reload())}>Re-run Whisper</button>
-        <select onChange={e => s.project && api.retranscribe(s.project.id, e.target.value).then(() => location.reload())} defaultValue=""><option value="" disabled>force language…</option>{['en', 'hi', 'es', 'fr', 'de', 'pt', 'ja', 'ko', 'zh', 'ar', 'ru', 'it'].map(l => <option key={l}>{l}</option>)}</select></div>
+        <select onChange={e => s.project && api.retranscribe(s.project.id, e.target.value).then(() => location.reload())} defaultValue=""><option value="" disabled>force language…</option>{Object.keys(LANGS).map(l => <option key={l} value={l}>{LANGS[l]}</option>)}</select></div>
     </div>
   )
 }
@@ -211,8 +298,8 @@ export function ExportPanel({ cards }: { cards: Card[] }) {
       await document.fonts.ready
       await Promise.all([s.style.font.family, ...s.overlays.map(o => o.font)].map(f => document.fonts.load(`700 40px "${f}"`).catch(() => null)))
       const blob = await exportMp4({
-        videoUrl: s.project.playUrl, audioUrl: s.audioUrl, cuts, duration: s.project.duration, fps, W: size.w, H: size.h,
-        frame: { cards, style: s.style, captionsOn: s.captionsOn, overlays: s.overlays, zooms: s.zooms, pan: s.pan, images: imageCache },
+        videoUrl: s.project.playUrl, audioUrl: s.audioUrl, music: s.music, words: s.words, cuts, duration: s.project.duration, fps, W: size.w, H: size.h,
+        frame: { cards, style: s.style, captionsOn: s.captionsOn, overlays: s.overlays, zooms: s.zooms, pan: s.pan, images: mediaCache.images, videos: mediaCache.videos },
         onProgress: (p, msg) => setProg({ p, msg }), signal: ac.signal,
       })
       download(blob, `${(s.project.name || 'video').replace(/\.[^.]+$/, '')}-opencap.mp4`)
