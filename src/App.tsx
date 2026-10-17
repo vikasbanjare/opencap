@@ -12,6 +12,7 @@ export default function App() {
   const [recording, setRecording] = useState(false)
   const refresh = () => api.list().then(setProjects).catch(e => setErr(`API not reachable: ${e.message}. Start the server (see README).`))
   useEffect(() => { refresh() }, [])
+  useEffect(() => { if (!projects.some(p => p.transcribeStatus === 'running')) return; const id = setInterval(refresh, 3000); return () => clearInterval(id) }, [projects])
   // deep link ?p=<id>
   useEffect(() => { const id = new URLSearchParams(location.search).get('p'); if (id) api.get(id).then(setOpen).catch(() => null) }, [])
   useEffect(() => { const u = new URL(location.href); if (open) u.searchParams.set('p', open.id); else u.searchParams.delete('p'); history.replaceState(null, '', u) }, [open])

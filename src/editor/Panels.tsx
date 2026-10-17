@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useEditor, aspectSize, mediaCache, ensureMedia, type Aspect } from '../store'
-import { PRESETS } from '../captions/presets'
+import { PRESETS, ALL_TAGS } from '../captions/presets'
 import type { Card, CaptionStyle, Overlay, Word } from '../captions/types'
 import { fillerIndices, silenceCuts, mergeCuts, autoZooms, cutsFromWords, fmtTime } from '../lib/timeline'
 import { api, download } from '../lib/api'
 import { exportMp4, webCodecsOk } from '../lib/export'
 
-const FONTS = ['Inter', 'Oswald', 'Montserrat', 'Bebas Neue', 'Poppins', 'Nunito', 'Playfair Display', 'EB Garamond', 'Caveat', 'Space Mono', 'Anton']
+const FONTS = ['Inter', 'Oswald', 'Montserrat', 'Bebas Neue', 'Poppins', 'Nunito', 'Playfair Display', 'EB Garamond', 'Caveat', 'Space Mono', 'Anton', 'Permanent Marker']
 const LANGS: Record<string, string> = { en: 'English', es: 'Spanish', fr: 'French', de: 'German', pt: 'Portuguese', it: 'Italian', hi: 'Hindi', ar: 'Arabic', zh: 'Chinese', ja: 'Japanese', ko: 'Korean', ru: 'Russian', tr: 'Turkish', id: 'Indonesian', nl: 'Dutch', pl: 'Polish', uk: 'Ukrainian', vi: 'Vietnamese', th: 'Thai', sv: 'Swedish' }
 
 // ---------------- Captions ----------------
@@ -24,7 +24,7 @@ export function CaptionsPanel({ cards, seek }: { cards: Card[]; seek: (t: number
   if (!s.words.length) return (
     <div className="panel">
       <h3>Captions</h3>
-      <p className="muted">{status === 'running' ? 'Transcribing with Whisper… this page refreshes itself when it finishes.' : status === 'error' ? `Transcription failed: ${s.project?.transcribeError}` : 'No transcript yet.'}</p>
+      <p className="muted">{status === 'running' ? 'Transcribing with Whisper… this page refreshes itself when it finishes (a 30 s clip takes ~15 s; the first clip after the server starts can take a minute while the model loads).' : status === 'error' ? `Transcription failed: ${s.project?.transcribeError}` : 'No transcript yet.'}</p>
       {status !== 'running' && <button onClick={() => s.project && api.retranscribe(s.project.id)}>Transcribe again</button>}
     </div>
   )
@@ -107,11 +107,18 @@ export function StylePanel({ cards }: { cards: Card[] }) {
   const s = useEditor()
   const st = s.style
   const up = (f: (x: CaptionStyle) => void) => s.setStyle(x => { const c = JSON.parse(JSON.stringify(x)); f(c); return c })
+  const [q, setQ] = useState(''); const [tag, setTag] = useState('')
+  const shown = PRESETS.filter(p => (!tag || p.tags.includes(tag)) && (!q || p.name.toLowerCase().includes(q.toLowerCase())))
   return (
     <div className="panel">
-      <h3>Style</h3>
+      <h3>Style <span className="muted">{shown.length} of {PRESETS.length}</span></h3>
+      <input placeholder="Search styles" value={q} onChange={e => setQ(e.target.value)} style={{ width: '100%', marginBottom: 6 }} />
+      <div className="tags">
+        <button className={`mini ${tag === '' ? 'on' : ''}`} onClick={() => setTag('')}>All</button>
+        {ALL_TAGS.map(t => <button key={t} className={`mini ${tag === t ? 'on' : ''}`} onClick={() => setTag(tag === t ? '' : t)}>{t}</button>)}
+      </div>
       <div className="presets">
-        {PRESETS.map(p => <button key={p.id} className={`preset ${st.id === p.id ? 'on' : ''}`} onClick={() => s.pickPreset(p.id)}>
+        {shown.map(p => <button key={p.id} className={`preset ${st.id === p.id ? 'on' : ''}`} onClick={() => s.pickPreset(p.id)}>
           <span style={{ fontFamily: p.font.family, fontWeight: p.font.weight, fontStyle: p.font.italic ? 'italic' : 'normal', color: p.box.mode === 'none' ? p.colors.text : p.colors.text, background: p.box.mode !== 'none' ? p.box.fill : 'transparent', padding: p.box.mode !== 'none' ? '2px 8px' : 0, borderRadius: p.box.radius > 20 ? 999 : 4, textTransform: p.font.case === 'upper' ? 'uppercase' : p.font.case === 'lower' ? 'lowercase' : 'none' }}>{p.name}</span>
           <small>{p.tags.join(' · ')}</small>
         </button>)}

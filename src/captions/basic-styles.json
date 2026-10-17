@@ -1,0 +1,893 @@
+[
+{
+"id": "b-heat",
+"name": "Heat",
+"colors": [
+"#FFFFFF",
+"#FF0000",
+"#999999",
+"#FFFFFF"
+],
+"reveal": "chunk",
+"entranceMs": 62,
+"tags": []
+},
+{
+"id": "b-zodiac",
+"name": "Zodiac",
+"colors": [
+"#DDC68A",
+"#F7CE45",
+"#1D2237",
+"#FE5345"
+],
+"reveal": "chunk",
+"entranceMs": 31,
+"tags": []
+},
+{
+"id": "b-hustle-v3",
+"name": "Hustle v3",
+"colors": [
+"#FEFEFE",
+"#F2ED6B",
+"#000000",
+"#FE5345"
+],
+"reveal": "chunk",
+"entranceMs": 500,
+"tags": []
+},
+{
+"id": "b-orion",
+"name": "Orion",
+"colors": [
+"#FFFFFF",
+"#50FF12",
+"#7E12FF",
+"#8AD32A"
+],
+"reveal": "chunk",
+"entranceMs": 62,
+"tags": []
+},
+{
+"id": "b-cove",
+"name": "Cove",
+"colors": [
+"#FEFEFE",
+"#FEFEFE",
+"#000000",
+"#FEFFFF"
+],
+"reveal": "word",
+"entranceMs": 47,
+"tags": [
+"Lifestyle"
+]
+},
+{
+"id": "b-magazine",
+"name": "Magazine",
+"colors": [
+"#FFFFFF",
+"#E7EF4D",
+"#4860BC",
+"#FFFFFF"
+],
+"reveal": "chunk",
+"entranceMs": 47,
+"tags": [
+"Polished",
+"Business",
+"Lifestyle"
+]
+},
+{
+"id": "b-betelgeuse",
+"name": "Betelgeuse",
+"colors": [
+"#000000",
+"#000000",
+"#FEFFFF",
+"#000000"
+],
+"reveal": "chunk",
+"entranceMs": 31,
+"tags": []
+},
+{
+"id": "b-daily-mail",
+"name": "Daily Mail",
+"colors": [
+"#FEFEFE",
+"#FEFEFE",
+"#FEFEFE",
+"#FEFEFE"
+],
+"reveal": "chunk",
+"entranceMs": 31,
+"tags": []
+},
+{
+"id": "b-eclipse",
+"name": "Eclipse",
+"colors": [
+"#FFFFFF",
+"#FFFFFF",
+"#25005D",
+"#A3D16E"
+],
+"reveal": "word",
+"entranceMs": 47,
+"tags": []
+},
+{
+"id": "b-suzy",
+"name": "Suzy",
+"colors": [
+"#FDC514",
+"#FDC515",
+"#000000",
+"#FEF894"
+],
+"reveal": "word",
+"entranceMs": 31,
+"tags": []
+},
+{
+"id": "b-milky-way",
+"name": "Milky Way",
+"colors": [
+"#FFFFFF",
+"#50FF12",
+"#7E12FF",
+"#8AD32A"
+],
+"reveal": "chunk",
+"entranceMs": 31,
+"tags": []
+},
+{
+"id": "b-vitamin-c",
+"name": "Vitamin C",
+"colors": [
+"#FFFFFF",
+"#FFFFFF",
+"#F8DA85",
+"#FFFFFF"
+],
+"reveal": "chunk",
+"entranceMs": 62,
+"tags": []
+},
+{
+"id": "b-alcyone",
+"name": "Alcyone",
+"colors": [
+"#FFFFFF",
+"#50FF12",
+"#7E12FF",
+"#8AD32A"
+],
+"reveal": "chunk",
+"entranceMs": 500,
+"tags": []
+},
+{
+"id": "b-lilac",
+"name": "Lilac",
+"colors": [
+"#FFFFFF",
+"#FFFFFF",
+"#000000",
+"#CDBFFE"
+],
+"reveal": "chunk",
+"entranceMs": 281,
+"tags": []
+},
+{
+"id": "b-thuban",
+"name": "Thuban",
+"colors": [
+"#000000",
+"#000000",
+"#FCFD00",
+"#FEFFFF"
+],
+"reveal": "chunk",
+"entranceMs": 500,
+"tags": []
+},
+{
+"id": "b-marigold",
+"name": "Marigold",
+"colors": [
+"#FEFEFE",
+"#FEFEFE",
+"#000000",
+"#FDE300"
+],
+"reveal": "word",
+"entranceMs": 47,
+"tags": []
+},
+{
+"id": "b-closed-cap",
+"name": "Closed Cap",
+"colors": [
+"#FFFFFF",
+"#FFFFFF",
+"#000000",
+"#FFFFFF"
+],
+"reveal": "chunk",
+"entranceMs": 31,
+"tags": []
+},
+{
+"id": "b-note",
+"name": "Note",
+"colors": [
+"#FDF6EB",
+"#FFFFFF",
+"#2F2F2F",
+"#FFFFFF"
+],
+"reveal": "chunk",
+"entranceMs": 31,
+"tags": []
+},
+{
+"id": "b-poem",
+"name": "Poem",
+"colors": [
+"#22282A",
+"#22282A",
+"#FCF2D8",
+"#FEFFFF"
+],
+"reveal": "chunk",
+"entranceMs": 50,
+"tags": []
+},
+{
+"id": "b-energy",
+"name": "Energy",
+"colors": [
+"#39373A",
+"#000000",
+"#ECE9EB",
+"#000000"
+],
+"reveal": "chunk",
+"entranceMs": 62,
+"tags": []
+},
+{
+"id": "b-recess",
+"name": "Recess",
+"colors": [
+"#FEFEFE",
+"#FEFEFE",
+"#7E11FE",
+"#FEFFFF"
+],
+"reveal": "word",
+"entranceMs": 219,
+"tags": [
+"Minimal",
+"Motivation",
+"Educational"
+]
+},
+{
+"id": "b-messages",
+"name": "Messages",
+"colors": [
+"#FEFEFE",
+"#FEFFFF",
+"#1E89FE",
+"#9AD14B"
+],
+"reveal": "chunk",
+"entranceMs": 31,
+"tags": []
+},
+{
+"id": "b-mizar",
+"name": "Mizar",
+"colors": [
+"#FEFEFE",
+"#FEFFFF",
+"#7E11FE",
+"#FEFFFF"
+],
+"reveal": "chunk",
+"entranceMs": 500,
+"tags": []
+},
+{
+"id": "b-pulse",
+"name": "Pulse",
+"colors": [
+"#FFFFFF",
+"#14C7FF",
+"#08B0D5",
+"#FFFFFF"
+],
+"reveal": "chunk",
+"entranceMs": 141,
+"tags": [
+"Bold"
+]
+},
+{
+"id": "b-linear",
+"name": "Linear",
+"colors": [
+"#000000",
+"#000000",
+"#FFFFFF",
+"#FFFFFF"
+],
+"reveal": "chunk",
+"entranceMs": 47,
+"tags": []
+},
+{
+"id": "b-cartwheel-black",
+"name": "Cartwheel Black",
+"colors": [
+"#FEFEFE",
+"#8D1AF4",
+"#000000",
+"#FEFEFE"
+],
+"reveal": "chunk",
+"entranceMs": 188,
+"tags": []
+},
+{
+"id": "b-footprint-v3",
+"name": "Footprint v3",
+"colors": [
+"#FEFEFE",
+"#50FE11",
+"#7E11FE",
+"#FCFD00"
+],
+"reveal": "chunk",
+"entranceMs": 297,
+"tags": []
+},
+{
+"id": "b-andromeda",
+"name": "Andromeda",
+"colors": [
+"#FEFEFE",
+"#FEFFFF",
+"#000000",
+"#FEFFFF"
+],
+"reveal": "chunk",
+"entranceMs": 31,
+"tags": []
+},
+{
+"id": "b-baseline",
+"name": "Baseline",
+"colors": [
+"#FFFFFF",
+"#FFFFFF",
+"#000000",
+"#FFFFFF"
+],
+"reveal": "word",
+"entranceMs": 47,
+"tags": []
+},
+{
+"id": "b-cartwheel-purple",
+"name": "Cartwheel Purple",
+"colors": [
+"#FEFEFE",
+"#F7CE45",
+"#731DF5",
+"#FEFEFE"
+],
+"reveal": "chunk",
+"entranceMs": 344,
+"tags": []
+},
+{
+"id": "b-arion-pink",
+"name": "Arion Pink",
+"colors": [
+"#000000",
+"#FEFEFE",
+"#E43168",
+"#FEFFFF"
+],
+"reveal": "chunk",
+"entranceMs": 500,
+"tags": []
+},
+{
+"id": "b-castor",
+"name": "Castor",
+"colors": [
+"#FEFEFE",
+"#00C7FC",
+"#7E11FE",
+"#7E12FE"
+],
+"reveal": "chunk",
+"entranceMs": 31,
+"tags": []
+},
+{
+"id": "b-techwave",
+"name": "Techwave",
+"colors": [
+"#FFFFFF",
+"#28E110",
+"#0F0538",
+"#FFFFFF"
+],
+"reveal": "word",
+"entranceMs": 109,
+"tags": []
+},
+{
+"id": "b-flair",
+"name": "Flair",
+"colors": [
+"#FFFFFF",
+"#FFFFFF",
+"#000000",
+"#FFFFFF"
+],
+"reveal": "chunk",
+"entranceMs": 47,
+"tags": []
+},
+{
+"id": "b-aries",
+"name": "Aries",
+"colors": [
+"#FEFEFE",
+"#FEF894",
+"#000000",
+"#FEF894"
+],
+"reveal": "word",
+"entranceMs": 31,
+"tags": []
+},
+{
+"id": "b-dimidium",
+"name": "Dimidium",
+"colors": [
+"#FEFEFE",
+"#F7CE45",
+"#000000",
+"#F7CE45"
+],
+"reveal": "chunk",
+"entranceMs": 266,
+"tags": []
+},
+{
+"id": "b-fuel",
+"name": "Fuel",
+"colors": [
+"#FFFFFF",
+"#D6FF42",
+"#000000",
+"#FFFFFF"
+],
+"reveal": "chunk",
+"entranceMs": 62,
+"tags": []
+},
+{
+"id": "b-orbitar-black",
+"name": "Orbitar Black",
+"colors": [
+"#FEFEFE",
+"#FFCC01",
+"#000000",
+"#FEFFFF"
+],
+"reveal": "chunk",
+"entranceMs": 500,
+"tags": []
+},
+{
+"id": "b-vitamin-b",
+"name": "Vitamin B",
+"colors": [
+"#FFFFFF",
+"#FFFFFF",
+"#6FAAFF",
+"#FFFFFF"
+],
+"reveal": "chunk",
+"entranceMs": 62,
+"tags": []
+},
+{
+"id": "b-lumin",
+"name": "Lumin",
+"colors": [
+"#FEFEFE",
+"#FEFFFF",
+"#FEFEFE",
+"#FEFFFF"
+],
+"reveal": "chunk",
+"entranceMs": 62,
+"tags": []
+},
+{
+"id": "b-pacific",
+"name": "Pacific",
+"colors": [
+"#FEFEFE",
+"#FEFEFE",
+"#000000",
+"#FEF894"
+],
+"reveal": "word",
+"entranceMs": 78,
+"tags": []
+},
+{
+"id": "b-neon",
+"name": "Neon",
+"colors": [
+"#FFFFFF",
+"#FFFFFF",
+"#000000",
+"#E8A7BF"
+],
+"reveal": "word",
+"entranceMs": 31,
+"tags": [
+"Entertainment"
+]
+},
+{
+"id": "b-drive",
+"name": "Drive",
+"colors": [
+"#FEFEFE",
+"#FEFEFE",
+"#000000",
+"#FDF9FE"
+],
+"reveal": "chunk",
+"entranceMs": 31,
+"tags": []
+},
+{
+"id": "b-scene",
+"name": "Scene",
+"colors": [
+"#F9E51F",
+"#F9E51F",
+"#000000",
+"#FEF894"
+],
+"reveal": "chunk",
+"entranceMs": 156,
+"tags": []
+},
+{
+"id": "b-medusa",
+"name": "Medusa",
+"colors": [
+"#FFFFFF",
+"#50FF12",
+"#7E12FF",
+"#8AD32A"
+],
+"reveal": "chunk",
+"entranceMs": 31,
+"tags": []
+},
+{
+"id": "b-cygnus-a",
+"name": "Cygnus A",
+"colors": [
+"#FFFFFF",
+"#50FF12",
+"#7E12FF",
+"#8AD32A"
+],
+"reveal": "chunk",
+"entranceMs": 62,
+"tags": []
+},
+{
+"id": "b-doodle",
+"name": "Doodle",
+"colors": [
+"#FFFFFF",
+"#FFD980",
+"#7E11FF",
+"#FFB0BD"
+],
+"reveal": "chunk",
+"entranceMs": 31,
+"tags": []
+},
+{
+"id": "b-blueprint",
+"name": "Blueprint",
+"colors": [
+"#FFFFFF",
+"#FFFFFF",
+"#7E11FF",
+"#FFFFFF"
+],
+"reveal": "chunk",
+"entranceMs": 78,
+"tags": [
+"Polished",
+"Business",
+"Educational"
+]
+},
+{
+"id": "b-freshly",
+"name": "Freshly",
+"colors": [
+"#FFFFFF",
+"#FFFFFF",
+"#A5E0F9",
+"#FFFFFF"
+],
+"reveal": "chunk",
+"entranceMs": 31,
+"tags": []
+},
+{
+"id": "b-finlay",
+"name": "Finlay",
+"colors": [
+"#FEFEFE",
+"#F7CE45",
+"#000000",
+"#F7CE45"
+],
+"reveal": "chunk",
+"entranceMs": 406,
+"tags": []
+},
+{
+"id": "b-runway",
+"name": "Runway",
+"colors": [
+"#FEFEFE",
+"#FE0077",
+"#000000",
+"#FEF894"
+],
+"reveal": "chunk",
+"entranceMs": 31,
+"tags": []
+},
+{
+"id": "b-sirius",
+"name": "Sirius",
+"colors": [
+"#FFFFFF",
+"#50FF12",
+"#7E12FF",
+"#8AD32A"
+],
+"reveal": "chunk",
+"entranceMs": 47,
+"tags": []
+},
+{
+"id": "b-minima",
+"name": "Minima",
+"colors": [
+"#FFFFFF",
+"#FFFFFF",
+"#999999",
+"#FFFFFF"
+],
+"reveal": "chunk",
+"entranceMs": 47,
+"tags": []
+},
+{
+"id": "b-energy-ii",
+"name": "Energy II",
+"colors": [
+"#383739",
+"#000000",
+"#ECE9EB",
+"#000000"
+],
+"reveal": "word",
+"entranceMs": 62,
+"tags": []
+},
+{
+"id": "b-growth",
+"name": "Growth",
+"colors": [
+"#FFFFFF",
+"#FF0000",
+"#08B0D5",
+"#FFFFFF"
+],
+"reveal": "chunk",
+"entranceMs": 62,
+"tags": [
+"Business"
+]
+},
+{
+"id": "b-nova",
+"name": "Nova",
+"colors": [
+"#FEFEFE",
+"#FEFEFE",
+"#000000",
+"#FEF894"
+],
+"reveal": "chunk",
+"entranceMs": 62,
+"tags": []
+},
+{
+"id": "b-garnet",
+"name": "Garnet",
+"colors": [
+"#FFFFFF",
+"#FFFFFF",
+"#999999",
+"#FFFFFF"
+],
+"reveal": "chunk",
+"entranceMs": 31,
+"tags": []
+},
+{
+"id": "b-glow",
+"name": "Glow",
+"colors": [
+"#FE00FE",
+"#FEFEFE",
+"#7E11FE",
+"#FEFFFF"
+],
+"reveal": "chunk",
+"entranceMs": 31,
+"tags": []
+},
+{
+"id": "b-monster",
+"name": "Monster",
+"colors": [
+"#FFFFFF",
+"#75FB4C",
+"#08B0D5",
+"#FFFFFF"
+],
+"reveal": "chunk",
+"entranceMs": 156,
+"tags": []
+},
+{
+"id": "b-alhena",
+"name": "Alhena",
+"colors": [
+"#FEFEFE",
+"#7E12FE",
+"#F5EC00",
+"#F5EC00"
+],
+"reveal": "chunk",
+"entranceMs": 188,
+"tags": []
+},
+{
+"id": "b-script",
+"name": "Script",
+"colors": [
+"#FFFFFF",
+"#FFFFFF",
+"#000000",
+"#FFFFFF"
+],
+"reveal": "word",
+"entranceMs": 47,
+"tags": []
+},
+{
+"id": "b-chronicle",
+"name": "Chronicle",
+"colors": [
+"#FFFFFF",
+"#FFFFFF",
+"#000000",
+"#FFFFFF"
+],
+"reveal": "chunk",
+"entranceMs": 31,
+"tags": []
+},
+{
+"id": "b-acamar",
+"name": "Acamar",
+"colors": [
+"#FFFFFF",
+"#50FF12",
+"#7E12FF",
+"#8AD32A"
+],
+"reveal": "chunk",
+"entranceMs": 31,
+"tags": []
+},
+{
+"id": "b-helios",
+"name": "Helios",
+"colors": [
+"#FFFBB9",
+"#FFFFFF",
+"#999999",
+"#FFFFFF"
+],
+"reveal": "chunk",
+"entranceMs": 31,
+"tags": []
+},
+{
+"id": "b-altair",
+"name": "Altair",
+"colors": [
+"#FFFFFF",
+"#50FF12",
+"#7E12FF",
+"#8AD32A"
+],
+"reveal": "chunk",
+"entranceMs": 31,
+"tags": []
+},
+{
+"id": "b-pollux",
+"name": "Pollux",
+"colors": [
+"#FFFFFF",
+"#50FF12",
+"#7E12FF",
+"#8AD32A"
+],
+"reveal": "chunk",
+"entranceMs": 31,
+"tags": []
+},
+{
+"id": "b-million",
+"name": "Million",
+"colors": [
+"#FFFFFF",
+"#FFFFFF",
+"#000000",
+"#FFFFFF"
+],
+"reveal": "chunk",
+"entranceMs": 62,
+"tags": []
+}
+]
