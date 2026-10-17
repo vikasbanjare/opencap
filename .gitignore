@@ -3,3 +3,4 @@ dist
 server/.venv
 server/data
 .DS_Store
+server/models
