@@ -108,7 +108,7 @@ export async function exportMp4(o: ExportOpts): Promise<Blob> {
 
 type Pcm = { length: number; channels: Float32Array[] }
 
-function spliceAudio(buf: AudioBuffer | null, ranges: Cut[], sr: number): Pcm {
+export function spliceAudio(buf: AudioBuffer | null, ranges: Cut[], sr: number): Pcm {
   const total = ranges.reduce((n, r) => n + Math.round((r.end - r.start) * sr), 0)
   const channels = [new Float32Array(total), new Float32Array(total)]
   if (!buf) return { length: total, channels }
@@ -129,9 +129,9 @@ function spliceAudio(buf: AudioBuffer | null, ranges: Cut[], sr: number): Pcm {
 }
 
 /** Music bed under the (already spliced) speech. Gain in dB, ducked by duckDb while a word is being spoken; 150 ms ramps. */
-function mixMusic(out: Pcm, music: AudioBuffer, m: Music, words: Word[], ranges: Cut[], sr: number) {
+export function mixMusic(out: Pcm, music: AudioBuffer, m: Music, words: Word[], ranges: Cut[], sr: number) {
   const mCh = [music.getChannelData(0), music.numberOfChannels > 1 ? music.getChannelData(1) : music.getChannelData(0)]
-  const scale = music.sampleRate / sr
+  const msr = music.sampleRate  // mt is in seconds; index the music buffer in its own samples
   const base = Math.pow(10, m.gainDb / 20), ducked = Math.pow(10, (m.gainDb + m.duckDb) / 20)
   const live = words.filter(w => !w.deleted)
   let pos = 0, g = base
@@ -142,7 +142,7 @@ function mixMusic(out: Pcm, music: AudioBuffer, m: Music, words: Word[], ranges:
       const tSrc = r.start + i / sr
       const mt = tSrc - m.start
       if (mt >= 0) {
-        const mi = Math.round(mt * scale)
+        const mi = Math.round(mt * msr)
         if (mi < mCh[0].length) {
           const speaking = m.duck && live.some(w => tSrc >= w.start - 0.1 && tSrc < w.end + 0.25)
           const target = speaking ? ducked : base
