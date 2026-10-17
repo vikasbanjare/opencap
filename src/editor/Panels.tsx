@@ -218,16 +218,17 @@ export function ElementsPanel() {
 export function AudioPanel({ cards }: { cards: Card[] }) {
   const s = useEditor()
   const [busy, setBusy] = useState<string | null>(null)
-  const [voices, setVoices] = useState<{ voices: string[]; ready: boolean } | null>(null)
+  const [voices, setVoices] = useState<{ voices: string[]; ready: boolean; clone: boolean } | null>(null)
   const [voice, setVoice] = useState('af_heart')
   const [speed, setSpeed] = useState(1)
+  const [ref, setRef] = useState({ start: 0, end: 10 })
   const [ttsText, setTtsText] = useState('')
   const [tts, setTts] = useState<{ url: string; duration: number } | null>(null)
-  useEffect(() => { api.ttsVoices().then(setVoices).catch(() => setVoices({ voices: [], ready: false })) }, [])
+  useEffect(() => { api.ttsVoices().then(setVoices).catch(() => setVoices({ voices: [], ready: false, clone: false })) }, [])
   useEffect(() => { if (!ttsText && cards.length) setTtsText(cards.map(c => c.words.map(w => w.text).join(' ')).join(' ')) }, [cards, ttsText])
   const run = async (tool: 'denoise' | 'normalize' | 'enhance') => { if (!s.project) return; setBusy(tool); try { const r = await api.audioTool(s.project.id, tool); s.set({ audioUrl: r.url }) } catch (e) { alert(String(e)) } finally { setBusy(null) } }
   const addMusic = async (f: File | undefined) => { if (!f || !s.project) return; setBusy('music'); try { const a = await api.uploadAsset(s.project.id, f); s.set({ music: { url: a.url, name: a.name, gainDb: -16, duck: true, duckDb: -10, start: 0 } }) } catch (e) { alert(String(e)) } finally { setBusy(null) } }
-  const speak = async () => { setBusy('tts'); try { setTts(await api.tts(ttsText, voice, speed)) } catch (e) { alert(String(e)) } finally { setBusy(null) } }
+  const speak = async () => { setBusy('tts'); try { setTts(voice === 'clone' ? await api.clone(s.project!.id, ttsText, ref.start, ref.end, speed) : await api.tts(ttsText, voice, speed)) } catch (e) { alert(String(e)) } finally { setBusy(null) } }
   return (
     <div className="panel">
       <h3>Audio</h3>
@@ -257,7 +258,11 @@ export function AudioPanel({ cards }: { cards: Card[] }) {
       {voices && !voices.ready && <p className="warn small">Kokoro model not downloaded yet: put kokoro-v1.0.onnx and voices-v1.0.bin in server/models/.</p>}
       <textarea value={ttsText} onChange={e => setTtsText(e.target.value)} rows={4} style={{ width: '100%' }} />
       <div className="row wrap">
-        <select value={voice} onChange={e => setVoice(e.target.value)}>{(voices?.voices ?? ['af_heart']).map(v => <option key={v}>{v}</option>)}</select>
+        <select value={voice} onChange={e => setVoice(e.target.value)}>
+          {(voices?.voices ?? ['af_heart']).map(v => <option key={v}>{v}</option>)}
+          {voices?.clone && <option value="clone">Clone my voice (F5-TTS)</option>}
+        </select>
+        {voice === 'clone' && <label>Reference <input type="number" step={0.5} min={0} value={ref.start} onChange={e => setRef({ ...ref, start: +e.target.value })} style={{ width: 60 }} /> – <input type="number" step={0.5} min={0} value={ref.end} onChange={e => setRef({ ...ref, end: +e.target.value })} style={{ width: 60 }} /> s <span className="muted small">(3–15 s of your clean speech; first run downloads ~1.4 GB)</span></label>}
         <label>Speed <input type="range" min={0.6} max={1.5} step={0.05} value={speed} onChange={e => setSpeed(+e.target.value)} /> {speed.toFixed(2)}</label>
         <button disabled={!!busy || !ttsText.trim()} onClick={speak}>{busy === 'tts' ? 'generating…' : 'Generate'}</button>
       </div>
@@ -269,7 +274,7 @@ export function AudioPanel({ cards }: { cards: Card[] }) {
           <a className="btn" href={tts.url} download>Download wav</a>
         </div>
       </div>}
-      <p className="muted small">Voice cloning (AI twin) needs a multi-GB model (F5-TTS / XTTS). It is an optional plugin, see README.</p>
+      {voices && !voices.clone && <p className="muted small">Voice cloning (AI twin) is an optional plugin: install F5-TTS into server/.venv-clone, see README.</p>}
 
       <h4>Transcription</h4>
       <div className="row"><button onClick={() => s.project && api.retranscribe(s.project.id).then(() => location.reload())}>Re-run Whisper</button>

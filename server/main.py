@@ -314,7 +314,7 @@ def get_kokoro():
 
 @app.get("/api/tts/voices")
 def tts_voices():
-    return {"voices": KOKORO_VOICES, "ready": (ROOT / "models" / "kokoro-v1.0.onnx").exists()}
+    return {"voices": KOKORO_VOICES, "ready": (ROOT / "models" / "kokoro-v1.0.onnx").exists(), "clone": clone_cli() is not None}
 
 
 @app.post("/api/tts")
@@ -333,6 +333,54 @@ def tts(payload: dict):
         pcm = (np.clip(samples, -1, 1) * 32767).astype(np.int16)
         with wave.open(str(out), "wb") as wf:
             wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(sr); wf.writeframes(pcm.tobytes())
+    info = probe(out)
+    return {"url": f"/media/_tts/{out.name}", "duration": info["duration"]}
+
+
+# ---------- voice cloning (F5-TTS, optional plugin) ----------
+# Runs the f5-tts_infer-cli from a separate venv so the API venv stays torch-free.
+# Install: uv venv server/.venv-clone && uv pip install --python server/.venv-clone/bin/python f5-tts
+# (or symlink server/.venv-clone to any venv that already has torch + f5-tts). First run downloads ~1.4 GB.
+
+def clone_cli() -> Path | None:
+    for c in [os.environ.get("OPENCAP_CLONE_CLI"), ROOT / ".venv-clone" / "bin" / "f5-tts_infer-cli", shutil.which("f5-tts_infer-cli")]:
+        if c and Path(c).exists():
+            return Path(c)
+    return None
+
+
+@app.post("/api/clone")
+def clone(payload: dict):
+    """payload: {projectId, text, refStart, refEnd, speed=1.0} -> wav url in the cloned voice.
+    Reference = project audio16k.wav cut to [refStart, refEnd] (keep it 3..15 s of clean speech);
+    its transcript words are passed as ref_text so F5 does not need its own ASR model."""
+    import hashlib
+    cli = clone_cli()
+    if not cli:
+        raise HTTPException(503, "voice cloning not installed: see README 'Optional: voice cloning'")
+    d = project_dir(payload.get("projectId", ""))
+    text = (payload.get("text") or "").strip()
+    a, b = float(payload.get("refStart", 0)), float(payload.get("refEnd", 10))
+    speed = float(payload.get("speed", 1.0))
+    if not text:
+        raise HTTPException(400, "empty text")
+    if not (0 <= a < b):
+        raise HTTPException(400, "refEnd must be after refStart")
+    b = min(b, a + 15)  # ponytail: F5 degrades past ~15 s of reference; clamp instead of erroring
+    key = hashlib.sha1(f"{d.name}|{a}|{b}|{text}|{speed}".encode()).hexdigest()[:16]
+    out_dir = DATA / "_tts"; out_dir.mkdir(exist_ok=True)
+    out = out_dir / f"clone-{key}.wav"
+    if not out.exists():
+        ref = out_dir / f"ref-{key}.wav"
+        run(["ffmpeg", "-v", "error", "-y", "-i", str(d / "audio16k.wav"), "-ss", str(a), "-t", str(b - a), "-ar", "24000", str(ref)])
+        words = []
+        if (d / "transcript.json").exists():
+            words = [w["text"] for w in json.loads((d / "transcript.json").read_text()).get("words", []) if w["start"] >= a and w["end"] <= b]
+        r = run([str(cli), "-m", "F5TTS_v1_Base", "-r", str(ref), "-s", " ".join(words), "-t", text, "--speed", str(speed),
+                 "--remove_silence", "-o", str(out_dir), "-w", out.name], timeout=1800)
+        ref.unlink(missing_ok=True)
+        if r.returncode != 0 or not out.exists():
+            raise HTTPException(500, "clone failed: " + (r.stderr or r.stdout)[-800:])
     info = probe(out)
     return {"url": f"/media/_tts/{out.name}", "duration": info["duration"]}
 

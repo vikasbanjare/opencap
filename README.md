@@ -44,7 +44,15 @@ Environment: `OPENCAP_WHISPER` (model name, default `large-v3-turbo`; use `small
 
 ## Optional: voice cloning
 
-Cloning needs a multi-GB model and is deliberately not installed by default. To add it, implement `POST /api/clone` in `server/main.py` with [F5-TTS](https://github.com/SWivid/F5-TTS) or Coqui XTTS-v2 (both free, Apache/CPML), taking a reference wav from the project's `audio16k.wav` plus text, and return a wav URL. The Audio panel's TTS section can then offer "clone my voice" alongside Kokoro voices.
+`POST /api/clone` turns a few seconds of your own speech into an AI twin with [F5-TTS](https://github.com/SWivid/F5-TTS) (MIT, runs on Apple MPS / CUDA / CPU). It is a plugin because it needs torch plus a ~1.4 GB model, so the API venv stays small:
+
+```bash
+# any venv with f5-tts works; put it (or a symlink to one that already has torch) at server/.venv-clone
+cd server && uv venv .venv-clone && uv pip install --python .venv-clone/bin/python f5-tts
+# or: export OPENCAP_CLONE_CLI=/path/to/bin/f5-tts_infer-cli
+```
+
+Restart the API; the Audio panel's voice list gains **Clone my voice (F5-TTS)**. Pick 3–15 s of clean speech from the clip as the reference (its transcript words are passed as `ref_text`, so no extra ASR model is needed), type the text, Generate. The first run downloads `F5TTS_v1_Base` + the Vocos vocoder into `~/.cache/huggingface`. Request: `{projectId, text, refStart, refEnd, speed}` → `{url, duration}`, cached by content hash like `/api/tts`.
 
 ## Limits
 

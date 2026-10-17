@@ -4,3 +4,5 @@ server/.venv
 server/data
 .DS_Store
 server/models
+server/.venv-clone
+__pycache__
