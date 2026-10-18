@@ -87,7 +87,8 @@ async def create_project(file: UploadFile = File(...)):
     peaks = waveform_peaks(d / "audio16k.wav")
     (d / "peaks.json").write_text(json.dumps(peaks))
     meta = write_meta(d, id=pid, name=file.filename, created=time.time(), **info,
-                      playUrl=f"/media/{pid}/play.mp4", peaksUrl=f"/media/{pid}/peaks.json")
+                      playUrl=f"/media/{pid}/play.mp4", peaksUrl=f"/media/{pid}/peaks.json",
+                      transcribeStatus="running", transcribeError=None)  # set before replying so the editor knows to wait
     threading.Thread(target=transcribe_job, args=(pid,), daemon=True).start()
     return meta
 
@@ -141,7 +142,12 @@ def get_model():
     with _model_lock:
         if _model is None:
             from faster_whisper import WhisperModel
-            _model = WhisperModel(WHISPER_MODEL, device="cpu", compute_type=WHISPER_COMPUTE)
+            # Cached copy first, with no network: a hung update check to huggingface.co used to stall
+            # every transcription silently. Download only when nothing is cached yet.
+            try:
+                _model = WhisperModel(WHISPER_MODEL, device="cpu", compute_type=WHISPER_COMPUTE, local_files_only=True)
+            except Exception:
+                _model = WhisperModel(WHISPER_MODEL, device="cpu", compute_type=WHISPER_COMPUTE)
         return _model
 
 
@@ -189,7 +195,7 @@ def warm_up():
 
 @app.post("/api/projects/{pid}/transcribe")
 def retranscribe(pid: str, language: Optional[str] = Form(None)):
-    project_dir(pid)
+    write_meta(project_dir(pid), transcribeStatus="running", transcribeError=None)
     threading.Thread(target=transcribe_job, args=(pid, language or None), daemon=True).start()
     return {"ok": True}
 

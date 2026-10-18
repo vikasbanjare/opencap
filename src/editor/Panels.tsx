@@ -24,8 +24,8 @@ export function CaptionsPanel({ cards, seek }: { cards: Card[]; seek: (t: number
   if (!s.words.length) return (
     <div className="panel">
       <h3>Captions</h3>
-      <p className="muted">{status === 'running' ? 'Transcribing with Whisper… this page refreshes itself when it finishes (a 30 s clip takes ~15 s; the first clip after the server starts can take a minute while the model loads).' : status === 'error' ? `Transcription failed: ${s.project?.transcribeError}` : 'No transcript yet.'}</p>
-      {status !== 'running' && <button onClick={() => s.project && api.retranscribe(s.project.id)}>Transcribe again</button>}
+      <p className="muted">{status === 'running' ? 'Transcribing with Whisper… this page refreshes itself when it finishes (a 30 s clip takes ~15 s; the first clip after the server starts can take a minute while the model loads).' : status === 'error' ? `Transcription failed: ${s.project?.transcribeError}` : status === 'done' ? 'No speech was found in this clip.' : 'Transcribing with Whisper…'}</p>
+      {(status === 'error' || status === 'done') && <button onClick={() => { const p = s.project; if (p) api.retranscribe(p.id).then(() => s.set({ project: { ...p, transcribeStatus: 'running' } })) }}>Transcribe again</button>}
     </div>
   )
 

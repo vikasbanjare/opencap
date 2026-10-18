@@ -12,15 +12,19 @@ export function Editor({ project, onBack }: { project: ProjectMeta; onBack: () =
   const videoRef = useRef<HTMLVideoElement>(null)
   useEffect(() => { api.getState(project.id).then(st => s.load(project, st)).catch(() => s.load(project)) /* eslint-disable-line react-hooks/exhaustive-deps */ }, [project.id])
 
-  // poll while transcribing
+  // Poll whenever there is no transcript yet and no final answer from the server; the status
+  // in hand may be stale (upload reply, "Transcribe again"), so ask the server instead of trusting it.
+  const st0 = s.project?.transcribeStatus
+  const waiting = s.project?.id === project.id && !s.words.length && st0 !== 'error' && st0 !== 'done'
   useEffect(() => {
-    if (project.transcribeStatus !== 'running') return
+    if (!waiting) return
     const id = setInterval(async () => {
-      const st = await api.status(project.id)
-      if (st.transcribeStatus !== 'running') { clearInterval(id); const m = await api.get(project.id); s.load(m, await api.getState(project.id).catch(() => null)) }
+      const st = await api.status(project.id).catch(() => null)
+      if (!st || st.transcribeStatus === 'running') return
+      clearInterval(id); const m = await api.get(project.id); s.load(m, await api.getState(project.id).catch(() => null))
     }, 2000)
     return () => clearInterval(id)
-  }, [project.id, project.transcribeStatus]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [project.id, waiting]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const cards = useMemo(() => chunkWords(s.words, s.style, s.project?.duration ?? 0), [s.words, s.style, s.project?.duration])
   const seek = useCallback((t: number) => { const v = videoRef.current; if (v) { v.currentTime = t; s.set({ time: t }) } }, [s])
