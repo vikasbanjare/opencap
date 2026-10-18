@@ -572,14 +572,11 @@ def assemble(pid: str, payload: dict):
     for k in range(1, len(segs)):
         s, L = segs[k], segs[k]["out"] - segs[k]["in"]
         t = XFADE.get(s.get("transition") or "none")
-        dur = min(float(s.get("tdur") or 0.5), L / 2, total / 2) if t else 0
-        if t and dur >= 0.05:
-            fg.append(f"[{cv}][v{k}]xfade=transition={t}:duration={dur:.3f}:offset={total - dur:.3f}[cv{k}]")
-            fg.append(f"[{ca}][a{k}]acrossfade=d={dur:.3f}[ca{k}]")
-            starts.append(total - dur); total += L - dur
-        else:
-            fg.append(f"[{cv}][{ca}][v{k}][a{k}]concat=n=2:v=1:a=1[cv{k}][ca{k}]")
-            starts.append(total); total += L
+        # ffmpeg fails when concat and xfade are mixed in one graph, so a plain cut is a one-frame crossfade
+        dur = min(float(s.get("tdur") or 0.5), L / 2, total / 2) if t else 1 / FPS
+        fg.append(f"[{cv}][v{k}]xfade=transition={t or 'fade'}:duration={dur:.3f}:offset={total - dur:.3f}[cv{k}]")
+        fg.append(f"[{ca}][a{k}]acrossfade=d={dur:.3f}[ca{k}]")
+        starts.append(total - dur); total += L - dur
         cv, ca = f"cv{k}", f"ca{k}"
     tmp = d / "play.build.mp4"
     r = run(args + ["-filter_complex", ";".join(fg), "-map", f"[{cv}]", "-map", f"[{ca}]", "-c:v", "libx264", "-preset", "veryfast",

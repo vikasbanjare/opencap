@@ -50,7 +50,7 @@ export function Editor({ project, onBack }: { project: ProjectMeta; onBack: () =
       const mod = e.metaKey || e.ctrlKey
       if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) s.redo(); else s.undo(); return }
       if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); s.redo(); return }
-      if (e.key === '?') { setKeys(k => !k); return }
+      if (e.key === '?' || (e.key === '/' && e.shiftKey)) { setKeys(k => !k); return }
       if (!mod && e.key.toLowerCase() === 's') { e.preventDefault(); clips.split(); return }
       if ((e.key === 'Delete' || e.key === 'Backspace') && clips.sel && !s.capSel && !s.selectedOverlay) { e.preventDefault(); clips.remove(clips.sel); return }
       if (e.key === 'Escape') { setKeys(false); s.set({ capSel: false, selectedOverlay: null, selected: null }); return }
