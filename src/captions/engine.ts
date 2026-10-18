@@ -195,6 +195,7 @@ export function drawCaptions(ctx: CanvasRenderingContext2D, t: number, cards: Ca
       ctx.font = fontStr(s, k, it.emph)
       let fill = s.colors.text
       if (it.emph && s.emphasis.color) fill = s.emphasis.color
+      if (it.word.color) fill = it.word.color
       if (A.active === 'color' && speaking) fill = hot
       if (s.emphasis.box && i === activeIdx) fill = '#111111'
       let a = 1

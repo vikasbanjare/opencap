@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { addCaption, hideCard, idxOf, mergeNext, setCardText, splitCard } from '../captions/edit'
+import { Icon } from '../ui/icons'
 import { useEditor, aspectSize, mediaCache, ensureMedia, type Aspect } from '../store'
 import { PRESETS, ALL_TAGS } from '../captions/presets'
 import type { Card, CaptionStyle, Overlay, Word } from '../captions/types'
@@ -9,13 +11,14 @@ import { StyleThumb } from './StyleThumb'
 import { DEFAULT_ANIM } from '../captions/engine'
 import type { Anim } from '../captions/types'
 
-const FONTS = ['Inter', 'Oswald', 'Montserrat', 'Bebas Neue', 'Poppins', 'Nunito', 'Playfair Display', 'EB Garamond', 'Caveat', 'Space Mono', 'Anton', 'Permanent Marker', 'Bangers', 'Luckiest Guy', 'Archivo Black', 'Lilita One', 'Righteous', 'Fredoka', 'DM Serif Display', 'Unbounded', 'Kanit', 'Rubik']
+export const FONTS = ['Inter', 'Oswald', 'Montserrat', 'Bebas Neue', 'Poppins', 'Nunito', 'Playfair Display', 'EB Garamond', 'Caveat', 'Space Mono', 'Anton', 'Permanent Marker', 'Bangers', 'Luckiest Guy', 'Archivo Black', 'Lilita One', 'Righteous', 'Fredoka', 'DM Serif Display', 'Unbounded', 'Kanit', 'Rubik']
 const LANGS: Record<string, string> = { en: 'English', es: 'Spanish', fr: 'French', de: 'German', pt: 'Portuguese', it: 'Italian', hi: 'Hindi', ar: 'Arabic', zh: 'Chinese', ja: 'Japanese', ko: 'Korean', ru: 'Russian', tr: 'Turkish', id: 'Indonesian', nl: 'Dutch', pl: 'Polish', uk: 'Ukrainian', vi: 'Vietnamese', th: 'Thai', sv: 'Swedish' }
 
 // ---------------- Captions ----------------
 export function CaptionsPanel({ cards, seek }: { cards: Card[]; seek: (t: number) => void }) {
   const s = useEditor()
   const [editing, setEditing] = useState<number | null>(null)
+  const [view, setView] = useState<'list' | 'transcript'>('list')
   const [gap, setGap] = useState(0.8)
   const [langs, setLangs] = useState<string[]>([])
   const [busy, setBusy] = useState<string | null>(null)
@@ -80,6 +83,18 @@ export function CaptionsPanel({ cards, seek }: { cards: Card[]; seek: (t: number
         <label>Translate to <select disabled={!!busy || !langs.length} defaultValue="" onChange={e => translate(e.target.value)}><option value="" disabled>{busy ? `translating → ${busy}…` : langs.length ? 'choose language' : 'translation unavailable'}</option>{langs.filter(l => l !== (s.project?.language ?? 'en')).map(l => <option key={l} value={l}>{LANGS[l] ?? l}</option>)}</select></label>
         {original && <button onClick={() => { s.setWords(() => JSON.parse(original)); localStorage.removeItem(`opencap:${s.project!.id}:original`) }}>Revert to original</button>}
       </div>
+      <div className="seg-tabs"><button className={view === 'list' ? 'on' : ''} onClick={() => setView('list')}>Captions</button><button className={view === 'transcript' ? 'on' : ''} onClick={() => setView('transcript')}>Transcript</button></div>
+      {view === 'list' ? <CaptionList cards={cards} seek={seek} /> : <>
+      {s.selected != null && s.words[s.selected] && (() => { const w = s.words[s.selected!], i = s.selected!; return (
+        <div className="word-bar">
+          <strong>“{w.text}”</strong>
+          <label className="swatch" title="Colour of this word"><span style={{ background: w.color ?? s.style.colors.text }} />A<input type="color" value={(w.color ?? s.style.colors.text).slice(0, 7)} onChange={e => s.setWords(ws => ws.map((x, j) => j === i ? { ...x, color: e.target.value } : x))} /></label>
+          {w.color && <button className="mini" onClick={() => s.setWords(ws => ws.map((x, j) => j === i ? { ...x, color: undefined } : x))}>Reset colour</button>}
+          <button className={`mini ${w.emph ? 'on' : ''}`} onClick={() => toggleEmph(i)}>Keyword</button>
+          <button className="mini" onClick={() => setEditing(i)}>Retype</button>
+          <button className="mini" onClick={() => s.setWords(ws => ws.map((x, j) => j === i ? { ...x, hide: !x.hide } : x))}>{w.hide ? 'Show in captions' : 'Hide from captions'}</button>
+          <button className="mini danger" onClick={() => toggleDelete(i)}>{w.deleted ? 'Restore to video' : 'Cut from video'}</button>
+        </div>) })()}
       <p className="muted small">Click a word to seek. Double-click to edit. Delete/Backspace removes it from the video (text-based cut). E marks the keyword. Translation runs offline; the first use of a language downloads its pack.</p>
       <div className="transcript" tabIndex={0} onKeyDown={e => {
         if (s.selected == null) return
@@ -93,7 +108,7 @@ export function CaptionsPanel({ cards, seek }: { cards: Card[]; seek: (t: number
               const active = s.time >= w.start && s.time < w.end
               return editing === i
                 ? <input key={i} autoFocus defaultValue={w.text} className="word-edit" onBlur={e => edit(i, e.target.value)} onKeyDown={e => { if (e.key === 'Enter') edit(i, (e.target as HTMLInputElement).value); if (e.key === 'Escape') setEditing(null) }} />
-                : <span key={i} className={`word ${active ? 'active' : ''} ${i === s.selected ? 'sel' : ''} ${w.emph || card.words[card.emphIndex] === w ? 'emph' : ''} ${(w.p ?? 1) < 0.5 ? 'lowconf' : ''}`}
+                : <span key={i} className={`word ${active ? 'active' : ''} ${w.hide ? 'hidden' : ''} ${i === s.selected ? 'sel' : ''} ${w.emph || card.words[card.emphIndex] === w ? 'emph' : ''} ${(w.p ?? 1) < 0.5 ? 'lowconf' : ''}`}
                   onClick={() => { s.set({ selected: i }); seek(w.start) }} onDoubleClick={() => setEditing(i)} title={`${fmtTime(w.start)} · p=${w.p ?? '?'}`}>{w.text}</span>
             }).flatMap(el => [el, ' '])}
           </span>
@@ -101,8 +116,45 @@ export function CaptionsPanel({ cards, seek }: { cards: Card[]; seek: (t: number
         {s.words.some(w => w.deleted) && <details><summary className="muted">deleted words</summary>
           {s.words.map((w, i) => w.deleted && <span key={i} className="word deleted" onClick={() => toggleDelete(i)}>{w.text}</span>)}</details>}
       </div>
+      </>}
     </div>
   )
+}
+
+// VEED-style list: one editable box per caption, with its time range and row actions.
+function CaptionList({ cards, seek }: { cards: Card[]; seek: (t: number) => void }) {
+  const s = useEditor()
+  const [text, setText] = useState('')
+  const list = useRef<HTMLDivElement>(null)
+  const now = cards.findIndex(c => s.time >= c.start && s.time < c.end)
+  const sel = s.selected != null ? cards.find(c => c.words.some(w => s.words.indexOf(w) === s.selected)) : undefined
+  const hidden = s.words.filter(w => w.hide && !w.deleted).length
+  useEffect(() => { if (s.playing && now >= 0) list.current?.querySelector(`[data-i="${now}"]`)?.scrollIntoView({ block: 'nearest' }) }, [now, s.playing])
+  return <>
+    <div className="add-cap">
+      <input placeholder="Type a new caption…" value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && text.trim()) { s.setWords(ws => addCaption(ws, s.time, text)); setText('') } }} />
+      <button className="primary" disabled={!text.trim()} onClick={() => { s.setWords(ws => addCaption(ws, s.time, text)); setText('') }}>+ Add at {fmtTime(s.time)}</button>
+    </div>
+    <div className="cap-list" ref={list}>
+      {cards.map((c, i) => {
+        const t = c.words.map(w => w.text).join(' ')
+        return (
+          <div key={c.id + t} data-i={i} className={`cap-row ${i === now ? 'now' : ''} ${c === sel ? 'sel' : ''}`} onClick={() => { seek(c.start + 0.01); s.set({ selected: idxOf(s.words, c)[0], capSel: true }) }}>
+            <div className="cap-head"><span className="mono">{fmtTime(c.start)} – {fmtTime(c.end)}</span>
+              <span className="cap-actions">
+                <button className="icon" title="Split in two" disabled={c.words.length < 2} onClick={e => { e.stopPropagation(); s.setWords(ws => splitCard(ws, c)) }}>{Icon.scissors}</button>
+                <button className="icon" title="Merge with next" disabled={!cards[i + 1]} onClick={e => { e.stopPropagation(); s.setWords(ws => mergeNext(ws, c, cards[i + 1])) }}>{Icon.merge}</button>
+                <button className="icon danger" title="Delete caption (the video stays)" onClick={e => { e.stopPropagation(); s.setWords(ws => hideCard(ws, c)) }}>{Icon.trash}</button>
+              </span>
+            </div>
+            <textarea rows={1} defaultValue={t} spellCheck
+              onBlur={e => { if (e.target.value.trim() !== t) s.setWords(ws => setCardText(ws, c, e.target.value)) }}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); (e.target as HTMLTextAreaElement).blur() } }} />
+          </div>)
+      })}
+    </div>
+    {hidden > 0 && <button className="ghost" onClick={() => s.setWords(ws => ws.map(w => w.hide ? { ...w, hide: false } : w))}>Restore {hidden} hidden words</button>}
+  </>
 }
 
 // ---------------- Style ----------------
@@ -110,13 +162,15 @@ export function StylePanel({ cards }: { cards: Card[] }) {
   const s = useEditor()
   const st = s.style
   const up = (f: (x: CaptionStyle) => void) => s.setStyle(x => { const c = JSON.parse(JSON.stringify(x)); f(c); return c })
-  const [q, setQ] = useState(''); const [tag, setTag] = useState('')
+  const [q, setQ] = useState(''); const [tag, setTag] = useState(''); const [pane, setPane] = useState<'presets' | 'custom'>('presets')
   const A: Anim = { ...DEFAULT_ANIM, ...(st.anim ?? {}) }
   const upA = (p: Partial<Anim>) => up(x => { x.anim = { ...A, ...p } })
   const shown = PRESETS.filter(p => (!tag || p.tags.includes(tag)) && (!q || p.name.toLowerCase().includes(q.toLowerCase())))
   return (
     <div className="panel">
-      <h3>Style <span className="muted">{shown.length} of {PRESETS.length}</span></h3>
+      <h3>Style <span className="muted">{pane === 'presets' ? `${shown.length} of ${PRESETS.length}` : st.name}</span></h3>
+      <div className="seg-tabs"><button className={pane === 'presets' ? 'on' : ''} onClick={() => setPane('presets')}>Presets</button><button className={pane === 'custom' ? 'on' : ''} onClick={() => setPane('custom')}>Customize</button></div>
+      {pane === 'presets' ? <>
       <input placeholder="Search styles" value={q} onChange={e => setQ(e.target.value)} style={{ width: '100%', marginBottom: 6 }} />
       <div className="tags">
         <button className={`mini ${tag === '' ? 'on' : ''}`} onClick={() => setTag('')}>All</button>
@@ -127,6 +181,7 @@ export function StylePanel({ cards }: { cards: Card[] }) {
           <StyleThumb style={p} />
           <span className="preset-name">{p.name}</span></button>)}
       </div>
+      </> : <>
       <h4>Text</h4>
       <div className="grid2">
         <label>Font <select value={st.font.family} onChange={e => up(x => { x.font.family = e.target.value })}>{FONTS.map(f => <option key={f}>{f}</option>)}</select></label>
@@ -185,6 +240,7 @@ export function StylePanel({ cards }: { cards: Card[] }) {
       </div>
       <h4>Auto zoom <span className="muted">(punch-in on emphasis cards)</span></h4>
       <label className="chk"><input type="checkbox" checked={s.autoZoom} onChange={e => s.set({ autoZoom: e.target.checked, zooms: e.target.checked ? autoZooms(cards) : [] })} /> punch in 6 % over 250 ms on every other keyword card</label>
+      </>}
     </div>
   )
 }

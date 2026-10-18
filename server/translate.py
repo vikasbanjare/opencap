@@ -13,11 +13,19 @@ _index: list[dict] | None = None
 _loaded: dict[tuple[str, str], tuple[object, object]] = {}
 
 
+_CACHE = Path(__file__).parent / "models" / "argos" / "index.json"
+
+
 def index() -> list[dict]:
+    """Package index: disk copy first (instant, works offline), network only when there is none yet."""
     global _index
+    if _index is None and _CACHE.exists():
+        _index = json.loads(_CACHE.read_text())
     if _index is None:
-        with urllib.request.urlopen(urllib.request.Request(INDEX_URL, headers={"User-Agent": "Mozilla/5.0 (OpenCap)"}), timeout=30) as r:
+        with urllib.request.urlopen(urllib.request.Request(INDEX_URL, headers={"User-Agent": "Mozilla/5.0 (OpenCap)"}), timeout=10) as r:
             _index = json.load(r)
+        _CACHE.parent.mkdir(parents=True, exist_ok=True)
+        _CACHE.write_text(json.dumps(_index))
     return _index
 
 

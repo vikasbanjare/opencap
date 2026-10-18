@@ -21,6 +21,7 @@ export const api = {
     x.onerror = () => rej(new Error('upload failed'))
     x.open('POST', '/api/projects'); x.send(fd)
   }),
+  rename: (id: string, name: string) => fetch(`/api/projects/${id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) }).then(j<ProjectMeta>),
   retranscribe: (id: string, language?: string) => { const fd = new FormData(); if (language) fd.append('language', language); return fetch(`/api/projects/${id}/transcribe`, { method: 'POST', body: fd }).then(j) },
   srt: (cards: { start: number; end: number; text: string }[], format: 'srt' | 'vtt') =>
     fetch('/api/subtitles/srt', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ cards, format }) }).then(r => r.text()),

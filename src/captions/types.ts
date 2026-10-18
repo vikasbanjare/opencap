@@ -2,7 +2,17 @@
 // captions-ai-research/caption-motion-patterns.md (A placement, B word-fill, C blur-pop,
 // D emphasis, E boxes, F parked title, G accents).
 
-export type Word = { text: string; start: number; end: number; p?: number; deleted?: boolean; emph?: boolean }
+export type Word = {
+  text: string; start: number; end: number; p?: number
+  deleted?: boolean   // removed from the video (text-based cut)
+  emph?: boolean      // keyword of its caption
+  brk?: boolean       // a new caption starts at this word
+  glue?: boolean      // never start a new caption here (merged captions)
+  hide?: boolean      // keep the video, show no caption for this word
+  color?: string      // per-word colour override
+  cardEnd?: number    // on the last word of a caption: when that caption leaves the screen
+  added?: boolean     // typed in by the user, not spoken
+}
 
 export type Card = {
   id: string

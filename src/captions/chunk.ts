@@ -7,7 +7,7 @@ export const isFiller = (w: string) => FILLERS.has(w.toLowerCase().replace(/[^a-
 
 /** Group words into caption cards. Breaks on max words/chars, long pauses and sentence punctuation. */
 export function chunkWords(words: Word[], style: CaptionStyle, duration: number): Card[] {
-  const live = words.filter(w => !w.deleted)
+  const live = words.filter(w => !w.deleted && !w.hide)
   const { maxWords, maxChars, gapBreak } = style.chunk
   const cards: Card[] = []
   let cur: Word[] = []
@@ -22,7 +22,7 @@ export function chunkWords(words: Word[], style: CaptionStyle, duration: number)
     if (prev) {
       const chars = cur.reduce((n, x) => n + x.text.length + 1, 0) + w.text.length
       const gap = w.start - prev.end
-      if (cur.length >= maxWords || chars > maxChars || gap > gapBreak || /[.!?]$/.test(prev.text)) flush()
+      if (w.brk || (!w.glue && (cur.length >= maxWords || chars > maxChars || gap > gapBreak || /[.!?]$/.test(prev.text)))) flush()
     }
     cur.push(w)
   }
@@ -32,7 +32,9 @@ export function chunkWords(words: Word[], style: CaptionStyle, duration: number)
     const next = cards[i + 1]
     const tail = next ? Math.min(next.start, cards[i].end + 1.2) : Math.min(duration, cards[i].end + 1.2)
     const minEnd = cards[i].start + 0.35
-    cards[i].end = next ? Math.min(next.start, Math.max(tail, minEnd)) : Math.max(tail, minEnd)
+    const fixed = cards[i].words[cards[i].words.length - 1].cardEnd
+    cards[i].end = fixed != null ? Math.max(cards[i].start + 0.2, next ? Math.min(next.start, fixed) : fixed)
+      : next ? Math.min(next.start, Math.max(tail, minEnd)) : Math.max(tail, minEnd)
     cards[i].emphIndex = pickEmphasis(cards[i].words)
   }
   return cards

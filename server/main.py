@@ -5,7 +5,13 @@ Everything is local and free: ffmpeg + faster-whisper (CTranslate2) on CPU/Metal
 """
 from __future__ import annotations
 
-import json, os, re, shutil, subprocess, threading, time, uuid
+import json, os, re, shutil, socket, subprocess, threading, time, uuid
+
+# Some networks silently drop IPv6. Python then waits a full timeout on every IPv6 address before trying
+# IPv4 (curl races both), so model and language-pack downloads hang for minutes. Try IPv4 first; IPv6 stays
+# as a fallback. ponytail: process-wide patch; drop it if this ever runs where only IPv6 works.
+_getaddrinfo = socket.getaddrinfo
+socket.getaddrinfo = lambda *a, **k: sorted(_getaddrinfo(*a, **k), key=lambda r: r[0] != socket.AF_INET)
 from pathlib import Path
 from typing import Optional
 
@@ -123,6 +129,14 @@ def list_projects():
         if (d / "meta.json").exists():
             m = json.loads((d / "meta.json").read_text()); m.pop("transcript", None); out.append(m)
     return out
+
+
+@app.patch("/api/projects/{pid}")
+def rename_project(pid: str, payload: dict):
+    name = str(payload.get("name", "")).strip()[:120]
+    if not name:
+        raise HTTPException(400, "name required")
+    return write_meta(project_dir(pid), name=name)
 
 
 @app.delete("/api/projects/{pid}")
