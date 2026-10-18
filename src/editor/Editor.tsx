@@ -1,12 +1,12 @@
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { useEditor } from '../store'
+import { useEditor, type Aspect } from '../store'
 import { chunkWords } from '../captions/chunk'
 import { Preview } from './Preview'
 import { Timeline } from './Timeline'
 import { CaptionsPanel, StylePanel, ElementsPanel, AudioPanel, ExportPanel } from './Panels'
 import { api, type ProjectMeta } from '../lib/api'
-import { fmtTime, outDuration, mergeCuts, cutsFromWords } from '../lib/timeline'
+import { fmtTime, outDuration, mergeCuts, cutsFromWords, fillerIndices, silenceCuts, autoZooms } from '../lib/timeline'
 import { Icon } from '../ui/icons'
 
 export function Editor({ project, onBack }: { project: ProjectMeta; onBack: () => void }) {
@@ -43,19 +43,27 @@ export function Editor({ project, onBack }: { project: ProjectMeta; onBack: () =
   })
 
   const cuts = mergeCuts([...s.cuts, ...cutsFromWords(s.words)])
-  const tabs: [typeof s.tab, string, React.ReactNode][] = [['captions', 'Captions', Icon.captions], ['style', 'Style', Icon.style], ['elements', 'Elements', Icon.elements], ['audio', 'Audio', Icon.audio], ['export', 'Export', Icon.export]]
+  // "Captions + auto edit" chosen on the start screen: apply it once, when the transcript arrives
+  useEffect(() => {
+    const k = `opencap:${project.id}:autoedit`
+    if (!s.words.length || !localStorage.getItem(k)) return
+    localStorage.removeItem(k)
+    const f = fillerIndices(s.words)
+    s.setWords(ws => ws.map((w, i) => f.includes(i) ? { ...w, deleted: true } : w))
+    s.set({ cuts: mergeCuts([...s.cuts, ...silenceCuts(s.words, 0.8, 0.15, project.duration)]), autoZoom: true, zooms: autoZooms(cards) })
+  }, [s.words.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const tabs: [typeof s.tab, string, React.ReactNode][] = [['captions', 'Subtitles', Icon.captions], ['style', 'Styles', Icon.style], ['elements', 'Elements', Icon.elements], ['audio', 'Audio', Icon.audio], ['export', 'Export', Icon.export]]
   const outDur = cuts.length ? outDuration(cuts, project.duration) : project.duration
   return (
     <div className="editor">
       <header className="editor-bar">
+        <button className="logo-btn" onClick={onBack} title="All projects"><span className="logo-mark" /></button>
         <button className="icon" onClick={onBack} title="All projects">{Icon.back}</button>
-        <div className="logo small"><span className="logo-mark" /></div>
-        <div className="title"><strong title={project.name}>{project.name}</strong><span className="muted">{project.width}×{project.height} · {project.fps} fps{cuts.length ? ` · ${cuts.length} cuts` : ''}</span></div>
-        <div className="transport">
-          <button className="play" onClick={toggle} title="Play / pause (space)">{s.playing ? Icon.pause : Icon.play}</button>
-          <span className="mono time">{fmtTime(s.time)}<span className="muted"> / {fmtTime(outDur)}</span></span>
-        </div>
-        <button className="primary" onClick={() => s.set({ tab: 'export' })}>{Icon.export} Export</button>
+        <div className="title"><strong title={project.name}>{project.name}</strong><span className="muted">{project.width}×{project.height} · {fmtTime(outDur)}{cuts.length ? ` · ${cuts.length} cuts` : ''}</span></div>
+        <span style={{ flex: 1 }} />
+        <span className="saved">{Icon.check} Saved on this Mac</span>
+        <button className="done" onClick={() => s.set({ tab: 'export' })}>{Icon.check} Done</button>
       </header>
       <div className="body">
         <nav className="tabs">{tabs.map(([k, l, ic]) => <button key={k} className={s.tab === k ? 'on' : ''} onClick={() => s.set({ tab: k })}>{ic}<span>{l}</span></button>)}</nav>
@@ -66,9 +74,19 @@ export function Editor({ project, onBack }: { project: ProjectMeta; onBack: () =
           {s.tab === 'audio' && <AudioPanel cards={cards} />}
           {s.tab === 'export' && <ExportPanel cards={cards} />}
         </aside>
-        <main><Preview cards={cards} videoRef={videoRef} /></main>
+        <main>
+          <Preview cards={cards} videoRef={videoRef} />
+          <div className="stage-pill">
+            <label>{Icon.frame}<select value={s.aspect} onChange={e => s.set({ aspect: e.target.value as Aspect })}>
+              <option value="source">Original</option><option value="9:16">Tall portrait (9:16)</option><option value="4:5">Portrait (4:5)</option><option value="1:1">Square (1:1)</option><option value="16:9">Landscape (16:9)</option></select></label>
+            <span className="sep" />
+            <label className="chk">{Icon.captions}<input type="checkbox" checked={s.captionsOn} onChange={e => s.set({ captionsOn: e.target.checked })} /> Captions</label>
+            <span className="sep" />
+            <button className="link" onClick={() => s.set({ tab: 'style' })}>{Icon.gear} Style</button>
+          </div>
+        </main>
       </div>
-      <Timeline cards={cards} seek={seek} />
+      <Timeline cards={cards} seek={seek} toggle={toggle} outDur={outDur} />
     </div>
   )
 }

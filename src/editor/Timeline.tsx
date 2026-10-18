@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useEditor } from '../store'
 import type { Card } from '../captions/types'
 import { cutsFromWords, mergeCuts, fmtTime } from '../lib/timeline'
+import { Icon } from '../ui/icons'
 
-const HUES = ['#8b5cf6', '#ec4899', '#22d3ee', '#f97316', '#a3e635', '#f472b6']
+const HUES = ['#a78bfa', '#f9a8d4', '#67e8f9', '#fdba74', '#bef264', '#c4b5fd']
 
-export function Timeline({ cards, seek }: { cards: Card[]; seek: (t: number) => void }) {
+export function Timeline({ cards, seek, toggle, outDur }: { cards: Card[]; seek: (t: number) => void; toggle: () => void; outDur: number }) {
   const s = useEditor()
   const ref = useRef<HTMLCanvasElement>(null)
   const wrap = useRef<HTMLDivElement>(null)
@@ -26,14 +27,14 @@ export function Timeline({ cards, seek }: { cards: Card[]; seek: (t: number) => 
     const dpr = window.devicePixelRatio || 1
     c.width = W * dpr; c.height = H * dpr; c.style.width = W + 'px'; c.style.height = H + 'px'
     const ctx = c.getContext('2d')!; ctx.scale(dpr, dpr)
-    ctx.fillStyle = '#0b0b12'; ctx.fillRect(0, 0, W, H)
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H)
     // ruler
-    ctx.fillStyle = '#6b7280'; ctx.font = '10px Inter, system-ui'
+    ctx.fillStyle = '#9b9ba4'; ctx.font = '10px Inter, system-ui'
     const step = pps > 120 ? 0.5 : pps > 50 ? 1 : pps > 20 ? 2 : 5
     for (let t = 0; t <= dur; t += step) { const x = t * pps; ctx.fillRect(x, 0, 1, 6); if (Math.round(t / step) % 2 === 0) ctx.fillText(fmtTime(t), x + 3, 14) }
     // waveform
     if (peaks.length) {
-      ctx.fillStyle = '#34344a'
+      ctx.fillStyle = '#d9d9e0'
       const n = peaks.length, mid = 60
       for (let i = 0; i < n; i++) { const x = i / 20 * pps, h = peaks[i] * 36; ctx.fillRect(x, mid - h, Math.max(1, pps / 20), h * 2) }
     }
@@ -42,7 +43,7 @@ export function Timeline({ cards, seek }: { cards: Card[]; seek: (t: number) => 
       ctx.fillStyle = HUES[ci % HUES.length]
       for (const w of card.words) { const x = w.start * pps, ww = Math.max(2, (w.end - w.start) * pps - 1); ctx.globalAlpha = 0.85; ctx.fillRect(x, 100, ww, 22) }
       ctx.globalAlpha = 1
-      if (card.emphIndex >= 0) { const w = card.words[card.emphIndex]; ctx.fillStyle = '#fff'; ctx.fillRect(w.start * pps, 98, Math.max(2, (w.end - w.start) * pps - 1), 2) }
+      if (card.emphIndex >= 0) { const w = card.words[card.emphIndex]; ctx.fillStyle = '#7c3aed'; ctx.fillRect(w.start * pps, 98, Math.max(2, (w.end - w.start) * pps - 1), 2) }
     })
     // deleted words
     ctx.fillStyle = 'rgba(239,68,68,.55)'
@@ -54,10 +55,10 @@ export function Timeline({ cards, seek }: { cards: Card[]; seek: (t: number) => 
     // zooms
     s.zooms.forEach(z => { ctx.fillStyle = '#22d3ee'; ctx.fillRect(z.time * pps, 92, 2, 6) })
     // selection
-    if (s.selected != null && s.words[s.selected]) { const w = s.words[s.selected]; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(w.start * pps, 99, Math.max(2, (w.end - w.start) * pps - 1), 24) }
+    if (s.selected != null && s.words[s.selected]) { const w = s.words[s.selected]; ctx.strokeStyle = '#111'; ctx.lineWidth = 2; ctx.strokeRect(w.start * pps, 99, Math.max(2, (w.end - w.start) * pps - 1), 24) }
     if (rubber) { ctx.fillStyle = 'rgba(239,68,68,.3)'; ctx.fillRect(Math.min(rubber.a, rubber.b) * pps, 20, Math.abs(rubber.b - rubber.a) * pps, H - 20) }
     // playhead
-    ctx.fillStyle = '#ffffff'; ctx.fillRect(s.time * pps - 1, 0, 2, H)
+    ctx.fillStyle = '#111111'; ctx.fillRect(s.time * pps - 1, 0, 2, H); ctx.beginPath(); ctx.moveTo(s.time * pps - 6, 0); ctx.lineTo(s.time * pps + 6, 0); ctx.lineTo(s.time * pps, 8); ctx.fill()
   }, [W, H, pps, peaks, cards, s.words, s.cuts, s.overlays, s.zooms, s.time, s.selected, s.selectedOverlay, rubber, cuts, dur])
 
   // keep the playhead in view while playing
@@ -77,11 +78,22 @@ export function Timeline({ cards, seek }: { cards: Card[]; seek: (t: number) => 
   return (
     <div className="timeline">
       <div className="tl-tools">
-        <span className="muted">click = seek · shift-drag = cut · Delete = remove word · E = keyword</span>
-        <span style={{ flex: 1 }} />
-        <button onClick={() => setPps(p => Math.max(10, p / 1.5))}>−</button>
-        <button onClick={() => setPps(p => Math.min(600, p * 1.5))}>+</button>
-        {s.cuts.length > 0 && <button onClick={() => s.set({ cuts: [] })}>clear cuts ({s.cuts.length})</button>}
+        <div className="tl-left">
+          <span className="hint" title="click = seek · shift-drag = cut · Delete = remove word · E = keyword">{Icon.scissors} Shift-drag to cut</span>
+          {s.cuts.length > 0 && <button className="ghost" onClick={() => s.set({ cuts: [] })}>Clear cuts ({s.cuts.length})</button>}
+        </div>
+        <div className="tl-transport">
+          <button className="icon" title="Back 5 s" onClick={() => seek(Math.max(0, s.time - 5))}>{Icon.rewind}</button>
+          <button className="play" title="Play / pause (space)" onClick={toggle}>{s.playing ? Icon.pause : Icon.play}</button>
+          <button className="icon" title="Forward 5 s" onClick={() => seek(Math.min(dur, s.time + 5))}>{Icon.forward}</button>
+          <span className="mono time">{fmtTime(s.time)} <span className="muted">/ {fmtTime(outDur)}</span></span>
+        </div>
+        <div className="tl-right">
+          <button className="icon" title="Zoom out" onClick={() => setPps(p => Math.max(10, p / 1.5))}>{Icon.zoomOut}</button>
+          <input type="range" min={10} max={600} value={pps} onChange={e => setPps(+e.target.value)} />
+          <button className="icon" title="Zoom in" onClick={() => setPps(p => Math.min(600, p * 1.5))}>{Icon.zoomIn}</button>
+          <button className="ghost" onClick={() => wrap.current && s.project && setPps(Math.max(20, (wrap.current.clientWidth - 20) / s.project.duration))}>Fit</button>
+        </div>
       </div>
       <div className="tl-scroll" ref={wrap}>
         <canvas ref={ref} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} />

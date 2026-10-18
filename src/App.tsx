@@ -1,9 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type ProjectMeta } from './lib/api'
 import { Editor } from './editor/Editor'
 import { fmtTime } from './lib/timeline'
 import { Record } from './Record'
 import { Icon } from './ui/icons'
+import { StyleThumb } from './editor/StyleThumb'
+import { PRESETS, presetById } from './captions/presets'
+
+// Start screen follows the "composer" flow: add footage, pick a look, create.
+const FEATURED = ['prism-pro', 'paper-ii', 'prime', 'beast', 'karaoke', 'hype', 'highlighter', 'editorial', 'typewriter', 'comic', 'wave', 'impact-ii', 'glow-up', 'retro', 'neon', 'elevate']
 
 export default function App() {
   const [projects, setProjects] = useState<ProjectMeta[]>([])
@@ -12,18 +17,32 @@ export default function App() {
   const [err, setErr] = useState<string | null>(null)
   const [recording, setRecording] = useState(false)
   const [over, setOver] = useState(false)
+  const [file, setFile] = useState<File | null>(null)
+  const [styleId, setStyleId] = useState('prism-pro')
+  const [mode, setMode] = useState<'captions' | 'auto'>('captions')
+  const pick = useRef<HTMLInputElement>(null)
+  const fileUrl = useMemo(() => file ? URL.createObjectURL(file) : null, [file])
+  const featured = useMemo(() => FEATURED.map(presetById).filter(Boolean), [])
   const refresh = () => api.list().then(setProjects).catch(e => setErr(`The OpenCap server is not reachable (${e.message}). Start it, then reload this page.`))
   useEffect(() => { refresh() }, [])
   useEffect(() => { if (!projects.some(p => p.transcribeStatus === 'running')) return; const id = setInterval(refresh, 3000); return () => clearInterval(id) }, [projects])
-  // deep link ?p=<id>
   useEffect(() => { const id = new URLSearchParams(location.search).get('p'); if (id) api.get(id).then(setOpen).catch(() => null) }, [])
   useEffect(() => { const u = new URL(location.href); if (open) u.searchParams.set('p', open.id); else u.searchParams.delete('p'); history.replaceState(null, '', u) }, [open])
 
-  const onFiles = async (files: FileList | null) => {
-    const f = files?.[0]; if (!f) return
+  const create = async (f = file) => {
+    if (!f) return
     setUpl(0); setErr(null)
-    try { const m = await api.upload(f, setUpl); setOpen(m); refresh() } catch (e) { setErr(String(e)) } finally { setUpl(null) }
+    try {
+      const m = await api.upload(f, setUpl)
+      // the chosen look becomes the project's starting style; auto edit runs once the transcript lands
+      await fetch(`/api/projects/${m.id}/state`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ style: presetById(styleId) }) })
+      if (mode === 'auto') localStorage.setItem(`opencap:${m.id}:autoedit`, '1')
+      setFile(null); setOpen(m); refresh()
+    } catch (e) { setErr(String(e)) } finally { setUpl(null) }
   }
+  const choose = (files: FileList | null) => { const f = files?.[0]; if (f) setFile(f) }
+  const chosen = presetById(styleId)
+
   if (open) return <Editor project={open} onBack={() => { setOpen(null); refresh() }} />
   return (
     <div className="home">
@@ -32,24 +51,51 @@ export default function App() {
         <span className="pill">Free · private · runs on your Mac</span>
       </nav>
       <section className="hero">
-        <h1>Captions that <span className="grad">move</span>.</h1>
-        <p className="lede">Drop a video. Whisper writes every word, you pick from 130+ animated caption styles, and the export renders right in your browser.</p>
-        <label className={`drop ${over ? 'over' : ''} ${upl != null ? 'busy' : ''}`} onDragOver={e => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)} onDrop={e => { e.preventDefault(); setOver(false); onFiles(e.dataTransfer.files) }}>
-          <input type="file" accept="video/*,audio/*" hidden onChange={e => onFiles(e.target.files)} />
-          <span className="drop-icon">{Icon.upload}</span>
-          {upl == null
-            ? <><strong>Drop a video here</strong><span className="muted">or click to browse · mp4, mov, mkv, webm · nothing leaves this computer</span></>
-            : <><strong>Uploading {(upl * 100).toFixed(0)}%</strong><span className="bar"><span style={{ width: `${upl * 100}%` }} /></span></>}
-        </label>
-        <div className="hero-actions">
-          <button className="ghost" onClick={() => setRecording(true)}>{Icon.record} Record camera or screen</button>
-          <label className="btn ghost">{Icon.phone} Phone camera<input type="file" accept="video/*" capture="user" hidden onChange={e => onFiles(e.target.files)} /></label>
+        <h1>Captions that edit<br />like a pro would.</h1>
+
+        <div className={`composer ${over ? 'over' : ''}`} onDragOver={e => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)} onDrop={e => { e.preventDefault(); setOver(false); choose(e.dataTransfer.files) }}>
+          <input ref={pick} type="file" accept="video/*,audio/*" hidden onChange={e => choose(e.target.files)} />
+          <div className="composer-drop" onClick={() => !file && pick.current?.click()}>
+            {upl != null ? (
+              <div className="uploading"><strong>Uploading {(upl * 100).toFixed(0)}%</strong><span className="bar"><span style={{ width: `${upl * 100}%` }} /></span><span className="muted">Whisper starts transcribing as soon as it lands.</span></div>
+            ) : file && fileUrl ? (
+              <div className="picked">
+                <video src={fileUrl} muted playsInline autoPlay loop />
+                <div><strong>{file.name}</strong><span className="muted">{(file.size / 1e6).toFixed(1)} MB · ready</span>
+                  <button className="link" onClick={() => pick.current?.click()}>Replace</button></div>
+              </div>
+            ) : (
+              <div className="empty-drop">
+                <div className="stack"><span className="card a" /><span className="card b">+</span></div>
+                <span>Add footage to start</span>
+              </div>
+            )}
+          </div>
+          <div className="composer-bar">
+            <button className="icon round" title="Attach a video" onClick={() => pick.current?.click()}>{Icon.clip}</button>
+            <button className="icon round" title="Record camera or screen" onClick={() => setRecording(true)}>{Icon.record}</button>
+            <span className="chip">{Icon.style}{chosen.name}</span>
+            <select className="mode" value={mode} onChange={e => setMode(e.target.value as 'captions' | 'auto')}>
+              <option value="captions">Captions</option>
+              <option value="auto">Captions + auto edit</option>
+            </select>
+            <span style={{ flex: 1 }} />
+            <button className="create" disabled={!file || upl != null} onClick={() => create()}>Create my video {Icon.arrow}</button>
+          </div>
         </div>
-        <ul className="features">
-          <li>{Icon.sparkle} Word-level captions</li><li>{Icon.style} 130+ animated styles</li><li>{Icon.captions} Edit video by editing text</li><li>{Icon.export} Export in the browser</li>
-        </ul>
+
+        <div className="style-row">
+          {featured.map(p => (
+            <button key={p.id} className={`style-tile ${p.id === styleId ? 'on' : ''}`} onClick={() => setStyleId(p.id)}>
+              <StyleThumb style={p} portrait />
+              <span>{p.name}</span>
+            </button>
+          ))}
+          <div className="style-more"><strong>{PRESETS.length - featured.length}+</strong><span>more styles inside the editor</span></div>
+        </div>
+        <p className="fine">Everything runs on this computer: transcription, styling and export. Nothing is uploaded anywhere.</p>
       </section>
-      {recording && <Record onClose={() => setRecording(false)} onDone={f => { setRecording(false); const dt = new DataTransfer(); dt.items.add(f); onFiles(dt.files) }} />}
+      {recording && <Record onClose={() => setRecording(false)} onDone={f => { setRecording(false); setFile(f) }} />}
       {err && <p className="notice">{err}</p>}
       <section className="projects-section">
         <div className="section-head"><h2>Your projects</h2><span className="count">{projects.length}</span></div>

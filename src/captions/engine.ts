@@ -61,9 +61,11 @@ const cache = new Map<string, Layout>()
 if (typeof document !== 'undefined') document.fonts?.addEventListener('loadingdone', () => cache.clear())
 
 export function layoutCard(ctx: CanvasRenderingContext2D, card: Card, s: CaptionStyle, W: number, H: number): Layout {
-  // re-measure once the real font has loaded, or widths from the fallback font stick (words collide)
-  const ready = typeof document === 'undefined' || document.fonts?.check(`${s.font.weight} 20px "${s.font.family}"`)
-  const key = `${ready}|${card.id}|${s.id}|${W}x${H}|${card.words.map(w => w.text).join(' ')}|${card.emphIndex}|${JSON.stringify(s.font)}|${JSON.stringify(s.emphasis)}|${JSON.stringify(s.layout)}|${s.anim?.active}${s.anim?.activeScale}`
+  // key on a measured probe: when the web font finishes loading the width changes, so stale fallback widths never stick
+  const k0 = W / 1080
+  ctx.font = fontStr(s, k0, false)
+  const probe = ctx.measureText('Hamburgefonstiv').width.toFixed(1)
+  const key = `${probe}|${card.id}|${s.id}|${W}x${H}|${card.words.map(w => w.text).join(' ')}|${card.emphIndex}|${JSON.stringify(s.font)}|${JSON.stringify(s.emphasis)}|${JSON.stringify(s.layout)}|${s.anim?.active}${s.anim?.activeScale}`
   const hit = cache.get(key); if (hit) return hit
   const k = W / 1080
   const fontPx = s.font.size * k
