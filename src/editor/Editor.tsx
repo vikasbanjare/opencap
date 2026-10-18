@@ -1,3 +1,4 @@
+import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useEditor } from '../store'
 import { chunkWords } from '../captions/chunk'
@@ -6,6 +7,7 @@ import { Timeline } from './Timeline'
 import { CaptionsPanel, StylePanel, ElementsPanel, AudioPanel, ExportPanel } from './Panels'
 import { api, type ProjectMeta } from '../lib/api'
 import { fmtTime, outDuration, mergeCuts, cutsFromWords } from '../lib/timeline'
+import { Icon } from '../ui/icons'
 
 export function Editor({ project, onBack }: { project: ProjectMeta; onBack: () => void }) {
   const s = useEditor()
@@ -41,19 +43,22 @@ export function Editor({ project, onBack }: { project: ProjectMeta; onBack: () =
   })
 
   const cuts = mergeCuts([...s.cuts, ...cutsFromWords(s.words)])
-  const tabs: [typeof s.tab, string][] = [['captions', 'Captions'], ['style', 'Style'], ['elements', 'Elements'], ['audio', 'Audio'], ['export', 'Export']]
+  const tabs: [typeof s.tab, string, React.ReactNode][] = [['captions', 'Captions', Icon.captions], ['style', 'Style', Icon.style], ['elements', 'Elements', Icon.elements], ['audio', 'Audio', Icon.audio], ['export', 'Export', Icon.export]]
+  const outDur = cuts.length ? outDuration(cuts, project.duration) : project.duration
   return (
     <div className="editor">
-      <header>
-        <button onClick={onBack}>← Projects</button>
-        <strong>{project.name}</strong>
-        <span className="muted">{project.width}×{project.height} · {project.fps} fps · {fmtTime(project.duration)}{cuts.length ? ` → ${fmtTime(outDuration(cuts, project.duration))}` : ''}</span>
-        <span style={{ flex: 1 }} />
-        <button onClick={toggle}>{s.playing ? '❚❚ Pause' : '▶ Play'}</button>
-        <span className="mono">{fmtTime(s.time)}</span>
+      <header className="editor-bar">
+        <button className="icon" onClick={onBack} title="All projects">{Icon.back}</button>
+        <div className="logo small"><span className="logo-mark" /></div>
+        <div className="title"><strong title={project.name}>{project.name}</strong><span className="muted">{project.width}×{project.height} · {project.fps} fps{cuts.length ? ` · ${cuts.length} cuts` : ''}</span></div>
+        <div className="transport">
+          <button className="play" onClick={toggle} title="Play / pause (space)">{s.playing ? Icon.pause : Icon.play}</button>
+          <span className="mono time">{fmtTime(s.time)}<span className="muted"> / {fmtTime(outDur)}</span></span>
+        </div>
+        <button className="primary" onClick={() => s.set({ tab: 'export' })}>{Icon.export} Export</button>
       </header>
       <div className="body">
-        <nav className="tabs">{tabs.map(([k, l]) => <button key={k} className={s.tab === k ? 'on' : ''} onClick={() => s.set({ tab: k })}>{l}</button>)}</nav>
+        <nav className="tabs">{tabs.map(([k, l, ic]) => <button key={k} className={s.tab === k ? 'on' : ''} onClick={() => s.set({ tab: k })}>{ic}<span>{l}</span></button>)}</nav>
         <aside>
           {s.tab === 'captions' && <CaptionsPanel cards={cards} seek={seek} />}
           {s.tab === 'style' && <StylePanel cards={cards} />}

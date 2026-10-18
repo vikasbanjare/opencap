@@ -5,8 +5,11 @@ import type { Card, CaptionStyle, Overlay, Word } from '../captions/types'
 import { fillerIndices, silenceCuts, mergeCuts, autoZooms, cutsFromWords, fmtTime } from '../lib/timeline'
 import { api, download } from '../lib/api'
 import { exportMp4, webCodecsOk } from '../lib/export'
+import { StyleThumb } from './StyleThumb'
+import { DEFAULT_ANIM } from '../captions/engine'
+import type { Anim } from '../captions/types'
 
-const FONTS = ['Inter', 'Oswald', 'Montserrat', 'Bebas Neue', 'Poppins', 'Nunito', 'Playfair Display', 'EB Garamond', 'Caveat', 'Space Mono', 'Anton', 'Permanent Marker']
+const FONTS = ['Inter', 'Oswald', 'Montserrat', 'Bebas Neue', 'Poppins', 'Nunito', 'Playfair Display', 'EB Garamond', 'Caveat', 'Space Mono', 'Anton', 'Permanent Marker', 'Bangers', 'Luckiest Guy', 'Archivo Black', 'Lilita One', 'Righteous', 'Fredoka', 'DM Serif Display', 'Unbounded', 'Kanit', 'Rubik']
 const LANGS: Record<string, string> = { en: 'English', es: 'Spanish', fr: 'French', de: 'German', pt: 'Portuguese', it: 'Italian', hi: 'Hindi', ar: 'Arabic', zh: 'Chinese', ja: 'Japanese', ko: 'Korean', ru: 'Russian', tr: 'Turkish', id: 'Indonesian', nl: 'Dutch', pl: 'Polish', uk: 'Ukrainian', vi: 'Vietnamese', th: 'Thai', sv: 'Swedish' }
 
 // ---------------- Captions ----------------
@@ -65,7 +68,7 @@ export function CaptionsPanel({ cards, seek }: { cards: Card[]; seek: (t: number
       <div className="row wrap">
         <button className="primary" onClick={autoEdit} title="remove fillers, cut silences over 0.8 s, add punch-ins">✦ Auto edit</button>
         <button disabled={!fillers.length} onClick={() => s.setWords(ws => ws.map((w, i) => fillers.includes(i) ? { ...w, deleted: true } : w))}>Remove fillers ({fillers.length})</button>
-        <button onClick={() => s.set({ cuts: mergeCuts([...s.cuts, ...silenceCuts(s.words, gap, 0.15, s.project?.duration)]) })}>Cut silences &gt; <input type="number" step="0.1" min="0.3" value={gap} onChange={e => setGap(+e.target.value)} style={{ width: 48 }} />s</button>
+        <button onClick={() => s.set({ cuts: mergeCuts([...s.cuts, ...silenceCuts(s.words, gap, 0.15, s.project?.duration)]) })}>Cut silences &gt; <input type="number" step="0.1" min="0.3" value={gap} onChange={e => setGap(+e.target.value)} style={{ width: 64 }} />s</button>
         <button disabled={!deletedN} onClick={() => s.setWords(ws => ws.map(w => ({ ...w, deleted: false })))}>Restore {deletedN} words</button>
         <label className="chk"><input type="checkbox" checked={s.captionsOn} onChange={e => s.set({ captionsOn: e.target.checked })} /> show captions</label>
       </div>
@@ -108,6 +111,8 @@ export function StylePanel({ cards }: { cards: Card[] }) {
   const st = s.style
   const up = (f: (x: CaptionStyle) => void) => s.setStyle(x => { const c = JSON.parse(JSON.stringify(x)); f(c); return c })
   const [q, setQ] = useState(''); const [tag, setTag] = useState('')
+  const A: Anim = { ...DEFAULT_ANIM, ...(st.anim ?? {}) }
+  const upA = (p: Partial<Anim>) => up(x => { x.anim = { ...A, ...p } })
   const shown = PRESETS.filter(p => (!tag || p.tags.includes(tag)) && (!q || p.name.toLowerCase().includes(q.toLowerCase())))
   return (
     <div className="panel">
@@ -118,10 +123,9 @@ export function StylePanel({ cards }: { cards: Card[] }) {
         {ALL_TAGS.map(t => <button key={t} className={`mini ${tag === t ? 'on' : ''}`} onClick={() => setTag(tag === t ? '' : t)}>{t}</button>)}
       </div>
       <div className="presets">
-        {shown.map(p => <button key={p.id} className={`preset ${st.id === p.id ? 'on' : ''}`} onClick={() => s.pickPreset(p.id)}>
-          <span style={{ fontFamily: p.font.family, fontWeight: p.font.weight, fontStyle: p.font.italic ? 'italic' : 'normal', color: p.box.mode === 'none' ? p.colors.text : p.colors.text, background: p.box.mode !== 'none' ? p.box.fill : 'transparent', padding: p.box.mode !== 'none' ? '2px 8px' : 0, borderRadius: p.box.radius > 20 ? 999 : 4, textTransform: p.font.case === 'upper' ? 'uppercase' : p.font.case === 'lower' ? 'lowercase' : 'none' }}>{p.name}</span>
-          <small>{p.tags.join(' · ')}</small>
-        </button>)}
+        {shown.map(p => <button key={p.id} className={`preset ${st.id === p.id ? 'on' : ''}`} onClick={() => s.pickPreset(p.id)} title={p.tags.join(' · ')}>
+          <StyleThumb style={p} />
+          <span className="preset-name">{p.name}</span></button>)}
       </div>
       <h4>Text</h4>
       <div className="grid2">
@@ -150,6 +154,15 @@ export function StylePanel({ cards }: { cards: Card[] }) {
         <label>Ease <select value={st.entrance.ease} onChange={e => up(x => { x.entrance.ease = e.target.value as CaptionStyle['entrance']['ease'] })}><option>easeOut</option><option>easeOutBack</option><option>easeInOut</option><option>linear</option></select></label>
         <label>Exit <select value={st.exit.mode} onChange={e => up(x => { x.exit.mode = e.target.value as 'cut' | 'fade' })}><option value="cut">cut</option><option value="fade">fade</option></select></label>
         <label>Hollow inactive <input type="checkbox" checked={st.reveal.hollowInactive} onChange={e => up(x => { x.reveal.hollowInactive = e.target.checked })} /></label>
+      </div>
+      <h4>Animation</h4>
+      <div className="grid2">
+        <label>Word entrance <select value={A.word} onChange={e => upA({ word: e.target.value as Anim['word'] })}>{(['none', 'pop', 'bounce', 'slideUp', 'drop', 'slideLeft', 'zoom', 'blur', 'typewriter', 'flip', 'stretch', 'spin'] as const).map(o => <option key={o}>{o}</option>)}</select></label>
+        <label>Speed ms <input type="range" min={80} max={700} step={20} value={A.wordMs} onChange={e => upA({ wordMs: +e.target.value })} /> {A.wordMs}</label>
+        <label>Stagger ms <input type="range" min={0} max={200} step={10} value={A.stagger} onChange={e => upA({ stagger: +e.target.value })} /> {A.stagger}</label>
+        <label>Spoken word <select value={A.active} onChange={e => upA({ active: e.target.value as Anim['active'] })}>{(['none', 'color', 'scale', 'lift', 'glow', 'sweep', 'marker', 'underline'] as const).map(o => <option key={o}>{o}</option>)}</select></label>
+        <label>Spoken colour <input type="color" value={A.activeColor ?? '#FFE600'} onChange={e => upA({ activeColor: e.target.value })} /></label>
+        <label>Loop <select value={A.loop} onChange={e => upA({ loop: e.target.value as Anim['loop'] })}>{(['none', 'wave', 'shake', 'pulse', 'float', 'jitter'] as const).map(o => <option key={o}>{o}</option>)}</select></label>
       </div>
       <h4>Keyword emphasis</h4>
       <div className="grid2">

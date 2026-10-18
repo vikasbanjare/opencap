@@ -17,6 +17,19 @@ export type Ease = 'linear' | 'easeOut' | 'easeOutBack' | 'easeInOut'
 export type TextCase = 'upper' | 'lower' | 'sentence' | 'as-is'
 export type RevealMode = 'whole' | 'wordFill' | 'append' | 'lineStack'
 export type BoxMode = 'none' | 'pill' | 'bar' | 'linePill'
+/** How each word enters (whole mode: staggered from the card start; other modes: when the word is spoken). */
+export type WordIn = 'none' | 'pop' | 'bounce' | 'slideUp' | 'drop' | 'slideLeft' | 'zoom' | 'blur' | 'typewriter' | 'flip' | 'stretch' | 'spin'
+/** What happens to the word being spoken right now. */
+export type ActiveFx = 'none' | 'color' | 'scale' | 'lift' | 'glow' | 'sweep' | 'marker' | 'underline'
+/** Continuous motion while the card is on screen (shake and pulse act on the keyword only). */
+export type LoopFx = 'none' | 'wave' | 'shake' | 'pulse' | 'float' | 'jitter'
+export type Anim = {
+  word: WordIn; wordMs: number; stagger: number
+  active: ActiveFx; activeColor: string | null; activeScale: number
+  loop: LoopFx
+  slideX: number      // card slides in from this fraction of frame width
+  rotateFrom: number  // card rotates in from this many degrees
+}
 
 export type CaptionStyle = {
   id: string
@@ -27,6 +40,7 @@ export type CaptionStyle = {
   reveal: { mode: RevealMode; inactiveOpacity: number; wordMs: number; hollowInactive: boolean }
   entrance: { durationMs: number; blurPx: number; scaleFrom: number; ease: Ease; riseP: number }
   exit: { mode: 'cut' | 'fade'; ms: number }
+  anim: Anim
   emphasis: {
     mode: 'auto' | 'none'
     color: string | null       // null = keep text colour

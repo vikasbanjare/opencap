@@ -1,4 +1,5 @@
-import type { CaptionStyle } from './types'
+import type { Anim, CaptionStyle } from './types'
+import { DEFAULT_ANIM } from './engine'
 
 // Defaults = the modal values measured across 45 Captions.ai 9:16 previews
 // (band centre 67 %, blur-pop 125 ms, inactive 40 %, 2-word chunks).
@@ -9,6 +10,7 @@ const base: CaptionStyle = {
   reveal: { mode: 'whole', inactiveOpacity: 0.4, wordMs: 100, hollowInactive: false },
   entrance: { durationMs: 125, blurPx: 6, scaleFrom: 1.1, ease: 'easeOut', riseP: 0 },
   exit: { mode: 'cut', ms: 80 },
+  anim: DEFAULT_ANIM,
   emphasis: { mode: 'auto', color: null, weightDelta: 0, italic: false, sizeRatio: 1, glowPx: 0, underline: false, box: null },
   colors: { text: '#FFFFFF', stroke: '#000000', shadow: '#000000' },
   stroke: 2,
@@ -498,7 +500,174 @@ export const PRESETS: CaptionStyle[] = [
     stroke: 0, shadow: { blur: 8, opacity: 0.4, offsetY: 2 },
     chunk: { maxWords: 4, maxChars: 22 },
   }),
+  // ===== Viral: motion families common across caption tools (Submagic, CapCut, VEED, Captions) =====
+  // ponytail: not measured from previews like the premium set; tuned by eye to be clearly distinct.
+  mk({ id: 'hype', name: 'Hype', tags: ['Viral', 'Bold'] }, {
+    font: { family: 'Montserrat', weight: 900, size: 80, case: 'upper' },
+    emphasis: { mode: 'auto', color: '#39FF14' }, stroke: 7, shadow: { blur: 0, opacity: 0, offsetY: 0 },
+    entrance: { durationMs: 0, blurPx: 0, scaleFrom: 1 },
+    anim: { word: 'pop', stagger: 0, wordMs: 200, active: 'color', activeColor: '#FFE600' },
+    chunk: { maxWords: 3, maxChars: 18 },
+  }),
+  mk({ id: 'beast', name: 'Beast', tags: ['Viral', 'Bold', 'Entertainment'] }, {
+    font: { family: 'Luckiest Guy', weight: 400, size: 92, case: 'upper', letterSpacing: 1 },
+    emphasis: { mode: 'auto', color: '#FF3B3B' }, stroke: 8, shadow: { blur: 0, opacity: 0, offsetY: 6 },
+    entrance: { durationMs: 0, blurPx: 0, scaleFrom: 1 },
+    anim: { word: 'bounce', stagger: 70, wordMs: 450, active: 'scale', activeScale: 1.18 },
+    chunk: { maxWords: 2, maxChars: 14 },
+  }),
+  mk({ id: 'karaoke', name: 'Karaoke', tags: ['Viral', 'Trending'] }, {
+    font: { family: 'Lilita One', weight: 400, size: 74, case: 'upper' },
+    emphasis: { mode: 'none' }, stroke: 6, entrance: { durationMs: 120, blurPx: 0, scaleFrom: 0.9, ease: 'easeOutBack' },
+    anim: { active: 'sweep', activeColor: '#00E5FF' },
+    chunk: { maxWords: 4, maxChars: 22 },
+  }),
+  mk({ id: 'highlighter', name: 'Highlighter', tags: ['Viral', 'Business'] }, {
+    font: { family: 'Archivo Black', weight: 400, size: 60, case: 'upper' },
+    emphasis: { mode: 'none' }, stroke: 0, shadow: { blur: 12, opacity: 0.5, offsetY: 3 },
+    anim: { active: 'marker', activeColor: '#FFE14D', word: 'slideUp', stagger: 40 },
+    chunk: { maxWords: 3, maxChars: 20 },
+  }),
+  mk({ id: 'typewriter', name: 'Typewriter', tags: ['Viral', 'Minimal'] }, {
+    font: { family: 'Space Mono', weight: 700, size: 46, case: 'as-is' },
+    layout: { anchorX: 0.08, align: 'left', maxWidth: 0.84 },
+    emphasis: { mode: 'auto', color: '#7CFFB2' }, stroke: 0, shadow: { blur: 10, opacity: 0.6, offsetY: 2 },
+    entrance: { durationMs: 0, blurPx: 0, scaleFrom: 1 },
+    anim: { word: 'typewriter', stagger: 140, wordMs: 260 },
+    chunk: { maxWords: 5, maxChars: 30 },
+  }),
+  mk({ id: 'wave', name: 'Wave', tags: ['Viral', 'Lifestyle'] }, {
+    font: { family: 'Fredoka', weight: 700, size: 66, case: 'lower' },
+    reveal: { mode: 'wordFill', inactiveOpacity: 0.45, wordMs: 80 },
+    emphasis: { mode: 'none' }, stroke: 4, colors: { text: '#FFFFFF', stroke: '#3B1D5A' },
+    anim: { loop: 'wave', active: 'color', activeColor: '#FF7AD9' },
+    chunk: { maxWords: 3, maxChars: 20 },
+  }),
+  mk({ id: 'comic', name: 'Comic', tags: ['Viral', 'Entertainment'] }, {
+    font: { family: 'Bangers', weight: 400, size: 88, case: 'upper', letterSpacing: 2 },
+    emphasis: { mode: 'auto', color: '#FFD600' }, stroke: 7, shadow: { blur: 0, opacity: 0.9, offsetY: 6 },
+    entrance: { durationMs: 220, blurPx: 0, scaleFrom: 0.6, ease: 'easeOutBack' },
+    anim: { word: 'spin', stagger: 60, wordMs: 320, loop: 'shake', rotateFrom: -8 },
+    chunk: { maxWords: 3, maxChars: 18 },
+  }),
+  mk({ id: 'glow-up', name: 'Glow Up', tags: ['Viral', 'Trending'] }, {
+    font: { family: 'Unbounded', weight: 700, size: 52, case: 'upper' },
+    reveal: { mode: 'append', inactiveOpacity: 0 },
+    emphasis: { mode: 'none' }, stroke: 0,
+    anim: { word: 'zoom', wordMs: 220, active: 'glow', activeColor: '#C084FC' },
+    chunk: { maxWords: 3, maxChars: 18 },
+  }),
+  mk({ id: 'slide-in', name: 'Slide In', tags: ['Viral', 'Business'] }, {
+    font: { family: 'Kanit', weight: 800, italic: true, size: 66, case: 'upper' },
+    emphasis: { mode: 'auto', color: '#00FFA3' }, stroke: 3,
+    entrance: { durationMs: 260, blurPx: 4, scaleFrom: 1, ease: 'easeOut' },
+    anim: { word: 'slideLeft', stagger: 70, wordMs: 260, slideX: -0.12 },
+    chunk: { maxWords: 3, maxChars: 20 },
+  }),
+  mk({ id: 'elastic', name: 'Elastic', tags: ['Viral', 'Bold'] }, {
+    font: { family: 'Rubik', weight: 900, size: 70, case: 'upper' },
+    emphasis: { mode: 'auto', color: '#FF8A00' }, stroke: 5,
+    entrance: { durationMs: 0, blurPx: 0, scaleFrom: 1 },
+    anim: { word: 'stretch', stagger: 60, wordMs: 360, active: 'lift' },
+    chunk: { maxWords: 3, maxChars: 18 },
+  }),
+  mk({ id: 'retro', name: 'Retro', tags: ['Viral', 'Lifestyle'] }, {
+    font: { family: 'Righteous', weight: 400, size: 66, case: 'upper' },
+    colors: { text: '#FFD7A8', stroke: '#6B2B00' }, stroke: 5, emphasis: { mode: 'auto', color: '#FF5E3A' },
+    shadow: { blur: 0, opacity: 0.8, offsetY: 5 },
+    anim: { word: 'drop', stagger: 80, wordMs: 380 },
+    chunk: { maxWords: 3, maxChars: 20 },
+  }),
+  mk({ id: 'editorial', name: 'Editorial', tags: ['Viral', 'Minimal'] }, {
+    font: { family: 'DM Serif Display', weight: 400, size: 62, case: 'sentence' },
+    emphasis: { mode: 'auto', color: '#F5C66A', italic: true }, stroke: 0, shadow: { blur: 14, opacity: 0.5, offsetY: 2 },
+    exit: { mode: 'fade', ms: 160 },
+    anim: { word: 'blur', stagger: 110, wordMs: 380 },
+    chunk: { maxWords: 4, maxChars: 26 },
+  }),
+  mk({ id: 'bubble', name: 'Bubble', tags: ['Viral', 'Entertainment'] }, {
+    font: { family: 'Fredoka', weight: 700, size: 54, case: 'lower' },
+    colors: { text: '#1B1B1B', stroke: '#000000' }, stroke: 0, emphasis: { mode: 'auto', color: '#FF4D8D' },
+    box: { mode: 'pill', fill: '#FFFFFF', radius: 999, padX: 0.55, padY: 0.3 },
+    entrance: { durationMs: 260, blurPx: 0, scaleFrom: 0.5, ease: 'easeOutBack' },
+    anim: { active: 'scale', activeScale: 1.14 },
+    chunk: { maxWords: 3, maxChars: 20 },
+  }),
+  mk({ id: 'flip', name: 'Flip', tags: ['Viral', 'Bold'] }, {
+    font: { family: 'Unbounded', weight: 900, size: 54, case: 'upper' },
+    emphasis: { mode: 'none' }, stroke: 4,
+    entrance: { durationMs: 0, blurPx: 0, scaleFrom: 1 },
+    anim: { word: 'flip', stagger: 55, wordMs: 300, active: 'color', activeColor: '#22D3EE' },
+    chunk: { maxWords: 3, maxChars: 18 },
+  }),
+  mk({ id: 'scribble', name: 'Scribble', tags: ['Viral', 'Educational'] }, {
+    font: { family: 'Permanent Marker', weight: 400, size: 66, case: 'sentence' },
+    emphasis: { mode: 'auto', color: '#FF4D4D' }, stroke: 4,
+    anim: { word: 'pop', stagger: 60, wordMs: 240, loop: 'jitter' },
+    chunk: { maxWords: 3, maxChars: 20 },
+  }),
+  mk({ id: 'drift', name: 'Drift', tags: ['Viral', 'Lifestyle'] }, {
+    font: { family: 'Rubik', weight: 700, size: 58, case: 'lower' },
+    emphasis: { mode: 'auto', color: '#7CFFB2' }, stroke: 0, shadow: { blur: 14, opacity: 0.6, offsetY: 3 },
+    reveal: { mode: 'append', inactiveOpacity: 0 },
+    anim: { word: 'slideUp', wordMs: 300, loop: 'float', active: 'underline', activeColor: '#7CFFB2' },
+    chunk: { maxWords: 4, maxChars: 24 },
+  }),
 ]
+
+// Motion per existing style. Research-backed where caption-motion-patterns.md describes it
+// (Analog rise, Ignite/Evo blur-in, Film/Lens type-on, Blueprint underline, Magazine flash, Rocket lavender→white).
+const MOTION: Record<string, Partial<Anim>> = {
+  pulse: { word: 'blur', active: 'glow', activeColor: '#19C6FF' },
+  performance: { word: 'zoom', wordMs: 200, active: 'color', activeColor: '#EEFF00' },
+  impact: { loop: 'pulse' },
+  prime: { active: 'lift' },
+  paper: { active: 'scale', activeScale: 1.08 },
+  pop: { word: 'pop', stagger: 70 },
+  grit: { word: 'slideLeft' },
+  lift: { word: 'slideUp' },
+  archive: { active: 'scale', activeScale: 1.1 },
+  volt: { word: 'stretch', stagger: 50 },
+  velocity: { word: 'slideLeft', wordMs: 160 },
+  elevate: { word: 'blur', stagger: 90, wordMs: 320 },
+  sonnet: { word: 'slideUp', wordMs: 340 },
+  chalk: { word: 'typewriter', wordMs: 200, loop: 'jitter' },
+  cinematic: { word: 'blur', stagger: 0, wordMs: 420 },
+  lens: { word: 'typewriter', wordMs: 220 },
+  core: { word: 'slideUp' },
+  'prism-pro': { word: 'drop', wordMs: 300 },
+  'paper-ii': { active: 'scale', activeScale: 1.06 },
+  'impact-ii': { word: 'zoom', stagger: 0, wordMs: 160 },
+  y2k: { loop: 'float' },
+  form: { word: 'slideUp', stagger: 50 },
+  ember: { word: 'blur', stagger: 80, loop: 'float' },
+  clarity: { word: 'slideUp' },
+  ignite: { word: 'blur', active: 'color', activeColor: '#FF2A2A' },
+  align: { word: 'typewriter', wordMs: 240 },
+  analog: { word: 'slideUp', wordMs: 120 },
+  bloom: { word: 'pop' },
+  blueprint: { active: 'underline', activeColor: '#4DA3FF' },
+  byline: { word: 'blur', stagger: 70 },
+  'cinematic-ii': { word: 'flip', stagger: 40 },
+  evo: { word: 'blur', wordMs: 160 },
+  film: { word: 'typewriter', stagger: 160, wordMs: 260 },
+  growth: { word: 'drop' },
+  kai: { word: 'pop' },
+  linen: { word: 'slideUp', stagger: 60 },
+  magazine: { active: 'color', activeColor: '#B14CFF' },
+  neon: { loop: 'pulse', active: 'glow', activeColor: '#FF4FD8' },
+  rebel: { word: 'stretch', loop: 'jitter' },
+  rocket: { active: 'color', activeColor: '#FFFFFF' },
+  sketch: { word: 'typewriter', loop: 'jitter' },
+  stack: { word: 'pop' },
+  story: { word: 'blur', wordMs: 300 },
+  'vinyl-ii': { word: 'slideUp' },
+  vista: { word: 'blur', wordMs: 400 },
+  zine: { word: 'pop', loop: 'jitter' },
+}
+for (const p of PRESETS) if (MOTION[p.id]) p.anim = { ...p.anim, ...MOTION[p.id] }
+PRESETS.find(p => p.id === 'blueprint')!.emphasis.underline = false
+PRESETS.find(p => p.id === 'rocket')!.colors.text = '#B9A8FF'
 
 // Moving highlight boxes are attached after construction so the base stays box-free.
 PRESETS.find(p => p.id === 'focus')!.emphasis.box = { fill: '#FFFFFF', radius: 6, padX: 0.3, padY: 0.12 }
@@ -507,28 +676,50 @@ PRESETS.find(p => p.id === 'lift')!.emphasis.box = { fill: '#5FD39A', radius: 10
 PRESETS.find(p => p.id === 'kai')!.emphasis.box = { fill: '#3FC9B0', radius: 999, padX: 0.3, padY: 0.12 }
 
 // ===== Basic presets: the 67 flat Captions.ai caption styles (captions-ai-research/caption-styles.json) =====
-// Colour slots per research Part 4: 0 text, 1 active/keyword, 2 stroke or container, 3 glow/secondary.
-// ponytail: every basic preset shares one bold-sans look; only colours, reveal and entrance timing come from the data.
+// Colour slots per research Part 4: 0 text, 1 active/keyword, 2 stroke or container.
+// ponytail: the endpoint gives colours and timing only, not fonts or motion. Each preset gets one of these
+// looks (stable per name) so no two neighbours look alike; colours, reveal and entrance speed are theirs.
 import BASIC from './basic-styles.json'
+type Look = { font: Partial<CaptionStyle['font']>; anim: Partial<Anim>; size: number }
+const LOOKS: Look[] = [
+  { font: { family: 'Montserrat', weight: 900, case: 'upper' }, anim: { word: 'pop', stagger: 50 }, size: 64 },
+  { font: { family: 'Luckiest Guy', weight: 400, case: 'upper' }, anim: { word: 'bounce', wordMs: 420, active: 'scale' }, size: 70 },
+  { font: { family: 'Lilita One', weight: 400, case: 'upper' }, anim: { active: 'sweep' }, size: 66 },
+  { font: { family: 'Archivo Black', weight: 400, case: 'upper' }, anim: { active: 'marker' }, size: 56 },
+  { font: { family: 'Fredoka', weight: 700, case: 'lower' }, anim: { loop: 'wave' }, size: 62 },
+  { font: { family: 'Bangers', weight: 400, case: 'upper', letterSpacing: 2 }, anim: { word: 'spin', wordMs: 300 }, size: 76 },
+  { font: { family: 'Kanit', weight: 800, italic: true, case: 'upper' }, anim: { word: 'slideLeft' }, size: 60 },
+  { font: { family: 'Rubik', weight: 900, case: 'upper' }, anim: { word: 'stretch', wordMs: 340 }, size: 62 },
+  { font: { family: 'Poppins', weight: 700, case: 'sentence' }, anim: { word: 'slideUp', active: 'lift' }, size: 58 },
+  { font: { family: 'Unbounded', weight: 700, case: 'upper' }, anim: { word: 'zoom' }, size: 48 },
+  { font: { family: 'DM Serif Display', weight: 400, case: 'sentence' }, anim: { word: 'blur', wordMs: 340 }, size: 60 },
+  { font: { family: 'Righteous', weight: 400, case: 'upper' }, anim: { word: 'drop', wordMs: 360 }, size: 60 },
+]
 const lum = (hex: string) => { const n = parseInt(hex.slice(1, 7), 16); return (0.2126 * (n >> 16) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255 }
-for (const b of BASIC as { id: string; name: string; colors: string[]; reveal: string; entranceMs: number; tags: string[] }[]) {
-  const [c0, c1, c2, c3] = b.colors
-  const dark2 = lum(c2) < 0.35, bounce = b.entranceMs >= 400
+BASIC.forEach((b: { id: string; name: string; colors: string[]; reveal: string; entranceMs: number; tags: string[] }, i: number) => {
+  const [c0, c1, c2] = b.colors
+  const look = LOOKS[i % LOOKS.length]
+  const dark2 = lum(c2) < 0.35
+  const accent = c1.toUpperCase() !== c0.toUpperCase() ? c1 : null
+  const anim: Partial<Anim> = { ...look.anim }
+  if (anim.active === 'sweep' || anim.active === 'marker') anim.activeColor = accent ?? '#FFE600'
+  else if (accent) { anim.active = anim.active === 'scale' || anim.active === 'lift' ? anim.active : 'color'; anim.activeColor = accent }
   PRESETS.push(mk({ id: b.id, name: b.name, tags: ['Basic', ...b.tags] }, {
-    font: { family: 'Montserrat', weight: 800, size: 60, case: 'upper' },
+    font: { ...look.font, size: look.size },
     layout: { anchorY: 0.72 },
     reveal: b.reveal === 'word' ? { mode: 'wordFill', inactiveOpacity: 0.4, wordMs: 80 } : { mode: 'whole' },
-    entrance: bounce ? { durationMs: 350, blurPx: 0, scaleFrom: 0.7, ease: 'easeOutBack' } : { durationMs: Math.max(40, b.entranceMs), blurPx: 0, scaleFrom: 1.0 },
-    emphasis: c1.toUpperCase() !== c0.toUpperCase() ? { mode: 'auto', color: c1, glowPx: lum(c3) > 0.5 && c3.toUpperCase() !== c0.toUpperCase() ? 6 : 0 } : { mode: 'none' },
+    entrance: b.entranceMs >= 400 ? { durationMs: 350, blurPx: 0, scaleFrom: 0.7, ease: 'easeOutBack' } : { durationMs: Math.max(40, b.entranceMs), blurPx: 0, scaleFrom: 1.0 },
+    emphasis: accent ? { mode: 'auto', color: accent } : { mode: 'none' },
     colors: { text: c0, stroke: dark2 ? c2 : '#000000', shadow: dark2 ? c2 : '#000000' },
-    stroke: dark2 ? 3 : 0,
+    stroke: dark2 ? 4 : 2,
+    anim,
     chunk: { maxWords: 3, maxChars: 20 },
   }))
-}
+})
 
 export const GOOGLE_FONTS = ['Inter:wght@400;500;600;700;800;900', 'Oswald:wght@500;700', 'Montserrat:wght@600;800;900',
   'Bebas Neue', 'Poppins:wght@500;600;700', 'Nunito:wght@600;700;800', 'Playfair Display:ital,wght@0,400;0,700;1,400',
-  'EB Garamond:ital,wght@0,500;1,500', 'Caveat:wght@700', 'Space Mono:wght@700', 'Anton', 'Permanent Marker']
+  'EB Garamond:ital,wght@0,500;1,500', 'Caveat:wght@700', 'Space Mono:wght@700', 'Anton', 'Permanent Marker', 'Bangers', 'Luckiest Guy', 'Archivo Black', 'Lilita One', 'Righteous', 'Fredoka:wght@600;700', 'DM Serif Display', 'Unbounded:wght@700;900', 'Kanit:ital,wght@1,800', 'Rubik:wght@700;900']
 
 export const ALL_TAGS = [...new Set(PRESETS.flatMap(p => p.tags))].sort()
 export const presetById = (id: string) => PRESETS.find(p => p.id === id) ?? PRESETS[0]

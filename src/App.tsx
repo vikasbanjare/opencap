@@ -3,6 +3,7 @@ import { api, type ProjectMeta } from './lib/api'
 import { Editor } from './editor/Editor'
 import { fmtTime } from './lib/timeline'
 import { Record } from './Record'
+import { Icon } from './ui/icons'
 
 export default function App() {
   const [projects, setProjects] = useState<ProjectMeta[]>([])
@@ -10,7 +11,8 @@ export default function App() {
   const [upl, setUpl] = useState<number | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [recording, setRecording] = useState(false)
-  const refresh = () => api.list().then(setProjects).catch(e => setErr(`API not reachable: ${e.message}. Start the server (see README).`))
+  const [over, setOver] = useState(false)
+  const refresh = () => api.list().then(setProjects).catch(e => setErr(`The OpenCap server is not reachable (${e.message}). Start it, then reload this page.`))
   useEffect(() => { refresh() }, [])
   useEffect(() => { if (!projects.some(p => p.transcribeStatus === 'running')) return; const id = setInterval(refresh, 3000); return () => clearInterval(id) }, [projects])
   // deep link ?p=<id>
@@ -25,26 +27,49 @@ export default function App() {
   if (open) return <Editor project={open} onBack={() => { setOpen(null); refresh() }} />
   return (
     <div className="home">
-      <h1>OpenCap <span className="muted">free, local AI captions &amp; video editor</span></h1>
-      <label className="drop" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); onFiles(e.dataTransfer.files) }}>
-        <input type="file" accept="video/*,audio/*" hidden onChange={e => onFiles(e.target.files)} />
-        {upl == null ? <><strong>Drop a video</strong> or click to choose<br /><span className="muted">mp4 · mov · mkv · webm — stays on this machine. Whisper transcribes it automatically.</span></> : <>Uploading {(upl * 100).toFixed(0)}%</>}
-      </label>
-      <div className="row">
-        <button onClick={() => setRecording(true)}>● Record camera or screen</button>
-        <label className="btn"><input type="file" accept="video/*" capture="user" hidden onChange={e => onFiles(e.target.files)} />📷 Phone camera</label>
-      </div>
+      <nav className="home-nav">
+        <div className="logo"><span className="logo-mark" />OpenCap</div>
+        <span className="pill">Free · private · runs on your Mac</span>
+      </nav>
+      <section className="hero">
+        <h1>Captions that <span className="grad">move</span>.</h1>
+        <p className="lede">Drop a video. Whisper writes every word, you pick from 130+ animated caption styles, and the export renders right in your browser.</p>
+        <label className={`drop ${over ? 'over' : ''} ${upl != null ? 'busy' : ''}`} onDragOver={e => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)} onDrop={e => { e.preventDefault(); setOver(false); onFiles(e.dataTransfer.files) }}>
+          <input type="file" accept="video/*,audio/*" hidden onChange={e => onFiles(e.target.files)} />
+          <span className="drop-icon">{Icon.upload}</span>
+          {upl == null
+            ? <><strong>Drop a video here</strong><span className="muted">or click to browse · mp4, mov, mkv, webm · nothing leaves this computer</span></>
+            : <><strong>Uploading {(upl * 100).toFixed(0)}%</strong><span className="bar"><span style={{ width: `${upl * 100}%` }} /></span></>}
+        </label>
+        <div className="hero-actions">
+          <button className="ghost" onClick={() => setRecording(true)}>{Icon.record} Record camera or screen</button>
+          <label className="btn ghost">{Icon.phone} Phone camera<input type="file" accept="video/*" capture="user" hidden onChange={e => onFiles(e.target.files)} /></label>
+        </div>
+        <ul className="features">
+          <li>{Icon.sparkle} Word-level captions</li><li>{Icon.style} 130+ animated styles</li><li>{Icon.captions} Edit video by editing text</li><li>{Icon.export} Export in the browser</li>
+        </ul>
+      </section>
       {recording && <Record onClose={() => setRecording(false)} onDone={f => { setRecording(false); const dt = new DataTransfer(); dt.items.add(f); onFiles(dt.files) }} />}
-      {err && <p className="warn">{err}</p>}
-      <h2>Projects</h2>
-      <ul className="projects">
-        {projects.map(p => <li key={p.id}>
-          <button className="link" onClick={() => api.get(p.id).then(setOpen)}>{p.name}</button>
-          <span className="muted">{p.width}×{p.height} · {fmtTime(p.duration)} · {p.transcribeStatus === 'running' ? 'transcribing…' : p.transcribeStatus === 'error' ? 'transcription failed' : p.language ?? ''}</span>
-          <button className="mini danger" onClick={() => { if (confirm(`Delete ${p.name}?`)) api.remove(p.id).then(refresh) }}>delete</button>
-        </li>)}
-        {!projects.length && <li className="muted">No projects yet.</li>}
-      </ul>
+      {err && <p className="notice">{err}</p>}
+      <section className="projects-section">
+        <div className="section-head"><h2>Your projects</h2><span className="count">{projects.length}</span></div>
+        <div className="project-grid">
+          {projects.map(p => (
+            <article key={p.id} className="project" onClick={() => api.get(p.id).then(setOpen)}>
+              <div className="thumb">
+                <video src={`${p.playUrl}#t=1`} muted playsInline preload="metadata" />
+                <span className="dur">{fmtTime(p.duration)}</span>
+                <span className={`status ${p.transcribeStatus ?? ''}`}>{p.transcribeStatus === 'running' ? 'Transcribing…' : p.transcribeStatus === 'error' ? 'Failed' : 'Ready'}</span>
+              </div>
+              <div className="meta">
+                <div><strong title={p.name}>{p.name}</strong><span className="muted">{p.width}×{p.height}{p.language ? ` · ${p.language.toUpperCase()}` : ''}</span></div>
+                <button className="icon danger" title="Delete project" onClick={e => { e.stopPropagation(); if (confirm(`Delete ${p.name}?`)) api.remove(p.id).then(refresh) }}>{Icon.trash}</button>
+              </div>
+            </article>
+          ))}
+          {!projects.length && <div className="empty">No projects yet. Your first video will show up here.</div>}
+        </div>
+      </section>
     </div>
   )
 }

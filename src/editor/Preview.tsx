@@ -13,6 +13,7 @@ export function Preview({ cards, videoRef }: { cards: Card[]; videoRef: React.Re
   const dragging = useRef<{ id: string; dx: number; dy: number } | null>(null)
 
   useEffect(() => { s.overlays.forEach(ensureMedia) }, [s.overlays])
+  useEffect(() => { document.fonts.load(`${s.style.font.weight} 60px "${s.style.font.family}"`).catch(() => null) }, [s.style.font.family, s.style.font.weight])
 
   // render loop driven by the video clock
   useEffect(() => {

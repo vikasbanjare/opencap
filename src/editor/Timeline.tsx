@@ -3,7 +3,7 @@ import { useEditor } from '../store'
 import type { Card } from '../captions/types'
 import { cutsFromWords, mergeCuts, fmtTime } from '../lib/timeline'
 
-const HUES = ['#5b8def', '#e06ba1', '#52c7a0', '#f0a143', '#a177ee', '#4fc3f7']
+const HUES = ['#8b5cf6', '#ec4899', '#22d3ee', '#f97316', '#a3e635', '#f472b6']
 
 export function Timeline({ cards, seek }: { cards: Card[]; seek: (t: number) => void }) {
   const s = useEditor()
@@ -26,14 +26,14 @@ export function Timeline({ cards, seek }: { cards: Card[]; seek: (t: number) => 
     const dpr = window.devicePixelRatio || 1
     c.width = W * dpr; c.height = H * dpr; c.style.width = W + 'px'; c.style.height = H + 'px'
     const ctx = c.getContext('2d')!; ctx.scale(dpr, dpr)
-    ctx.fillStyle = '#121418'; ctx.fillRect(0, 0, W, H)
+    ctx.fillStyle = '#0b0b12'; ctx.fillRect(0, 0, W, H)
     // ruler
     ctx.fillStyle = '#6b7280'; ctx.font = '10px Inter, system-ui'
     const step = pps > 120 ? 0.5 : pps > 50 ? 1 : pps > 20 ? 2 : 5
     for (let t = 0; t <= dur; t += step) { const x = t * pps; ctx.fillRect(x, 0, 1, 6); if (Math.round(t / step) % 2 === 0) ctx.fillText(fmtTime(t), x + 3, 14) }
     // waveform
     if (peaks.length) {
-      ctx.fillStyle = '#2f3542'
+      ctx.fillStyle = '#34344a'
       const n = peaks.length, mid = 60
       for (let i = 0; i < n; i++) { const x = i / 20 * pps, h = peaks[i] * 36; ctx.fillRect(x, mid - h, Math.max(1, pps / 20), h * 2) }
     }
@@ -57,7 +57,7 @@ export function Timeline({ cards, seek }: { cards: Card[]; seek: (t: number) => 
     if (s.selected != null && s.words[s.selected]) { const w = s.words[s.selected]; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(w.start * pps, 99, Math.max(2, (w.end - w.start) * pps - 1), 24) }
     if (rubber) { ctx.fillStyle = 'rgba(239,68,68,.3)'; ctx.fillRect(Math.min(rubber.a, rubber.b) * pps, 20, Math.abs(rubber.b - rubber.a) * pps, H - 20) }
     // playhead
-    ctx.fillStyle = '#f43f5e'; ctx.fillRect(s.time * pps - 1, 0, 2, H)
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(s.time * pps - 1, 0, 2, H)
   }, [W, H, pps, peaks, cards, s.words, s.cuts, s.overlays, s.zooms, s.time, s.selected, s.selectedOverlay, rubber, cuts, dur])
 
   // keep the playhead in view while playing
