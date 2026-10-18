@@ -1,11 +1,11 @@
-# Editor gap analysis: OpenCap vs VEED and Captions.ai
+# Editor gap analysis: Pulse vs VEED and Captions.ai
 
 Audited 2026-10-18 against the VEED editor (veed.io/edit) and the Captions.ai flow.
 Status: **this pass** = built now, **later** = worth doing next, **out** = needs paid models or cloud.
 
 ## Caption editing (the core gap)
 
-| Gap | VEED / Captions.ai | OpenCap before | Status |
+| Gap | VEED / Captions.ai | Pulse before | Status |
 |---|---|---|---|
 | Caption list editor: one text box per caption with its time range | Subtitles panel lists every line, type to edit | only a word-by-word transcript, double-click a word | this pass |
 | Captions as blocks on the timeline | dedicated subtitle track | coloured word ticks, not selectable | this pass |

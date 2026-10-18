@@ -5,11 +5,13 @@ import { useEditor } from '../store'
 import type { Card } from '../captions/types'
 import { cutsFromWords, mergeCuts, fmtTime } from '../lib/timeline'
 import { Icon } from '../ui/icons'
+import type { ClipOps } from './useClips'
+import { TRANSITIONS, segLen } from '../lib/clips'
 
 const HUES = ['#a78bfa', '#f9a8d4', '#67e8f9', '#fdba74', '#bef264', '#c4b5fd']
 
 // track geometry (px)
-const RULER = 20, CAP_Y = 26, CAP_H = 34, AUD_Y = 68, AUD_H = 54, EL_Y = 130, EL_H = 24, H = 162, EDGE = 7
+const RULER = 20, VID_Y = 26, VID_H = 30, CAP_Y = 62, CAP_H = 32, AUD_Y = 100, AUD_H = 46, EL_Y = 152, EL_H = 22, H = 180, EDGE = 7
 
 type Nb = { idx: number[]; ws: number; we: number; end: number }
 const MIN = 0.15   // shortest a caption may get when a neighbour pushes into it
@@ -30,8 +32,9 @@ type Drag =
   | { kind: 'card'; mode: 'move' | 'l' | 'r'; idx: number[]; orig: Word[]; ws: number; we: number; a: number; b: number; prev?: Nb; next?: Nb; dur: number; x0: number; moved: boolean }
   | { kind: 'ov'; mode: 'move' | 'l' | 'r'; id: string; s0: number; e0: number; x0: number; moved: boolean }
   | { kind: 'cut'; t0: number }
+  | { kind: 'seg'; id: string; x0: number; dx: number; moved: boolean }
 
-export function Timeline({ cards, seek, toggle, outDur }: { cards: Card[]; seek: (t: number) => void; toggle: () => void; outDur: number }) {
+export function Timeline({ cards, seek, toggle, outDur, clips }: { cards: Card[]; seek: (t: number) => void; toggle: () => void; outDur: number; clips: ClipOps }) {
   const s = useEditor()
   const ref = useRef<HTMLCanvasElement>(null)
   const wrap = useRef<HTMLDivElement>(null)
@@ -40,6 +43,8 @@ export function Timeline({ cards, seek, toggle, outDur }: { cards: Card[]; seek:
   const drag = useRef<Drag | null>(null)
   const [rubber, setRubber] = useState<{ a: number; b: number } | null>(null)
   const [editing, setEditing] = useState<{ card: Card; text: string } | null>(null)
+  const [segDrag, setSegDrag] = useState<{ id: string; dx: number } | null>(null)
+  const clipName = (id: string) => id === 'source' ? (s.project?.name ?? 'Video') : s.project?.clips?.find(c => c.id === id)?.name ?? 'Clip'
 
   useEffect(() => { if (s.project) fetch(s.project.peaksUrl).then(r => r.json()).then(setPeaks).catch(() => setPeaks([])) }, [s.project])
   useEffect(() => { if (s.project && wrap.current) setPps(Math.max(20, (wrap.current.clientWidth - 20) / s.project.duration)) }, [s.project])
@@ -57,13 +62,27 @@ export function Timeline({ cards, seek, toggle, outDur }: { cards: Card[]; seek:
     ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H)
     // track lanes
     ctx.fillStyle = '#f7f7f9'
-    ctx.fillRect(0, CAP_Y - 3, W, CAP_H + 6); ctx.fillRect(0, AUD_Y - 3, W, AUD_H + 6); ctx.fillRect(0, EL_Y - 3, W, EL_H + 6)
+    ctx.fillRect(0, VID_Y - 3, W, VID_H + 6); ctx.fillRect(0, CAP_Y - 3, W, CAP_H + 6); ctx.fillRect(0, AUD_Y - 3, W, AUD_H + 6); ctx.fillRect(0, EL_Y - 3, W, EL_H + 6)
     // ruler
     ctx.fillStyle = '#9b9ba4'; ctx.font = '10px Inter, system-ui'
     const step = pps > 120 ? 0.5 : pps > 50 ? 1 : pps > 20 ? 2 : 5
     for (let t = 0; t <= dur; t += step) { const x = t * pps; ctx.fillRect(x, 0, 1, 6); if (Math.round(t / step) % 2 === 0) ctx.fillText(fmtTime(t), x + 3, 14) }
     // cuts (under everything else)
     for (const cu of cuts) { ctx.fillStyle = 'rgba(229,72,77,.12)'; ctx.fillRect(cu.start * pps, RULER, (cu.end - cu.start) * pps, H - RULER); ctx.fillStyle = 'rgba(229,72,77,.55)'; ctx.fillRect(cu.start * pps, RULER, 1, H - RULER); ctx.fillRect(cu.end * pps - 1, RULER, 1, H - RULER) }
+    const rr0 = (x: number, y: number, w: number, h: number, r: number) => { ctx.beginPath(); ctx.roundRect(x, y, Math.max(2, w), h, r) }
+    // clips (video track)
+    clips.segs.forEach((sg, i) => {
+      const dx = segDrag?.id === sg.id ? segDrag.dx : 0, x = sg.start * pps + dx, w = segLen(sg) * pps - 2, on = clips.sel === sg.id
+      ctx.globalAlpha = segDrag?.id === sg.id ? 0.75 : 1
+      rr0(x, VID_Y, w, VID_H, 7); ctx.fillStyle = on ? '#dbe5ff' : i % 2 ? '#e6ecfb' : '#eef2fd'; ctx.fill()
+      ctx.lineWidth = on ? 2 : 1; ctx.strokeStyle = on ? '#2C57E6' : '#b9c7f0'; ctx.stroke()
+      ctx.save(); ctx.beginPath(); ctx.rect(x + 6, VID_Y, Math.max(0, w - 12), VID_H); ctx.clip()
+      ctx.fillStyle = '#1e3a8a'; ctx.font = '600 11px Inter, system-ui'; ctx.fillText(`🎬 ${clipName(sg.clip)}  ${fmtTime(segLen(sg))}`, x + 8, VID_Y + VID_H / 2 + 4); ctx.restore()
+      ctx.globalAlpha = 1
+      if (i > 0 && sg.transition !== 'none') { // transition badge on the join
+        const bx = sg.start * pps; ctx.fillStyle = '#2C57E6'; ctx.beginPath(); ctx.moveTo(bx, VID_Y + 4); ctx.lineTo(bx + 8, VID_Y + VID_H / 2); ctx.lineTo(bx, VID_Y + VID_H - 4); ctx.lineTo(bx - 8, VID_Y + VID_H / 2); ctx.fill()
+      }
+    })
     // caption blocks
     const rr = (x: number, y: number, w: number, h: number, r: number) => { ctx.beginPath(); ctx.roundRect(x, y, Math.max(2, w), h, r) }
     cards.forEach((card, ci) => {
@@ -93,7 +112,7 @@ export function Timeline({ cards, seek, toggle, outDur }: { cards: Card[]; seek:
     if (rubber) { ctx.fillStyle = 'rgba(229,72,77,.25)'; ctx.fillRect(Math.min(rubber.a, rubber.b) * pps, RULER, Math.abs(rubber.b - rubber.a) * pps, H - RULER) }
     // playhead
     ctx.fillStyle = '#111111'; ctx.fillRect(s.time * pps - 1, 0, 2, H); ctx.beginPath(); ctx.moveTo(s.time * pps - 6, 0); ctx.lineTo(s.time * pps + 6, 0); ctx.lineTo(s.time * pps, 8); ctx.fill()
-  }, [W, pps, peaks, cards, s.words, s.cuts, s.overlays, s.zooms, s.time, s.selected, s.selectedOverlay, rubber, cuts, dur, selCard])
+  }, [W, pps, peaks, cards, s.words, s.cuts, s.overlays, s.zooms, s.time, s.selected, s.selectedOverlay, rubber, cuts, dur, selCard, clips.segs, clips.sel, segDrag])
 
   // keep the playhead in view while playing
   useEffect(() => { const el = wrap.current; if (!el || !s.playing) return; const x = s.time * pps; if (x < el.scrollLeft || x > el.scrollLeft + el.clientWidth - 40) el.scrollLeft = x - 40 }, [s.time, s.playing, pps])
@@ -103,6 +122,7 @@ export function Timeline({ cards, seek, toggle, outDur }: { cards: Card[]; seek:
   const edge = (x: number, a: number, b: number): 'l' | 'r' | 'move' => Math.abs(x - a * pps) < EDGE ? 'l' : Math.abs(x - b * pps) < EDGE ? 'r' : 'move'
   const hit = (x: number, y: number) => {
     const t = x / pps
+    if (y >= VID_Y && y <= VID_Y + VID_H) { const sg = clips.segs.find(g => t >= g.start && t < g.start + segLen(g)); if (sg) return { seg: sg, mode: 'move' as const } }
     // the block under the pointer wins; where two blocks touch, that decides whose edge you grab
     if (y >= CAP_Y && y <= CAP_Y + CAP_H) { const card = cards.find(c => t >= c.start && t < c.end) ?? cards.find(c => t >= c.start - EDGE / pps && t <= c.end + EDGE / pps); if (card) return { card, mode: edge(x, card.start, card.end) } }
     if (y >= EL_Y && y <= EL_Y + EL_H) { const o = [...s.overlays].reverse().find(o => t >= o.start - EDGE / pps && t <= o.end + EDGE / pps); if (o) return { o, mode: edge(x, o.start, o.end) } }
@@ -114,6 +134,7 @@ export function Timeline({ cards, seek, toggle, outDur }: { cards: Card[]; seek:
     ;(e.target as Element).setPointerCapture(e.pointerId)
     if (e.shiftKey) { drag.current = { kind: 'cut', t0: t }; setRubber({ a: t, b: t }); return }
     const h = hit(x, y)
+    if (h && 'seg' in h && h.seg) { drag.current = { kind: 'seg', id: h.seg.id, x0: x, dx: 0, moved: false }; clips.setSel(h.seg.id); s.set({ capSel: false, selectedOverlay: null }); return }
     if (h && 'card' in h && h.card) {
       const i = cards.indexOf(h.card), idx = idxOf(s.words, h.card)
       const nb = (c?: Card): Nb | undefined => c && { idx: idxOf(s.words, c), ws: c.words[0].start, we: c.words[c.words.length - 1].end, end: c.end }
@@ -128,6 +149,7 @@ export function Timeline({ cards, seek, toggle, outDur }: { cards: Card[]; seek:
   const onMove = (e: React.PointerEvent) => {
     const { x, y } = at(e), d = drag.current
     if (!d) { const h = hit(x, y); ref.current!.style.cursor = h ? (h.mode === 'move' ? 'grab' : 'ew-resize') : e.shiftKey ? 'crosshair' : 'default'; return }
+    if (d.kind === 'seg') { if (Math.abs(x - d.x0) > 4) d.moved = true; if (d.moved) { d.dx = x - d.x0; setSegDrag({ id: d.id, dx: d.dx }) } return }
     if (d.kind === 'cut') { setRubber({ a: d.t0, b: tOf(x) }); return }
     if (Math.abs(x - d.x0) < 3 && !d.moved) return
     d.moved = true; ref.current!.style.cursor = d.mode === 'move' ? 'grabbing' : 'ew-resize'
@@ -142,6 +164,14 @@ export function Timeline({ cards, seek, toggle, outDur }: { cards: Card[]; seek:
   }
   const onUp = (e: React.PointerEvent) => {
     const d = drag.current; drag.current = null
+    if (d?.kind === 'seg') {
+      setSegDrag(null)
+      if (!d.moved) { seek(tOf(at(e).x)); return }
+      // drop: new index = how many other clips' midpoints lie left of the dragged clip's midpoint
+      const sg = clips.segs.find(g => g.id === d.id)!, mid = (sg.start + segLen(sg) / 2) * pps + d.dx
+      const to = clips.segs.filter(g => g.id !== d.id && (g.start + segLen(g) / 2) * pps < mid).length
+      clips.move(d.id, to); return
+    }
     if (d?.kind === 'cut') { if (rubber && Math.abs(rubber.b - rubber.a) > 0.05) s.set({ cuts: mergeCuts([...s.cuts, { start: Math.min(rubber.a, rubber.b), end: Math.max(rubber.a, rubber.b) }]) }); setRubber(null); return }
     if (d && !d.moved) seek(tOf(at(e).x))   // a click on a block selects it and moves the playhead there
   }
@@ -157,7 +187,15 @@ export function Timeline({ cards, seek, toggle, outDur }: { cards: Card[]; seek:
     <div className="timeline">
       <div className="tl-tools">
         <div className="tl-left">
-          <span className="hint" title="Drag a caption to move it, drag its edges to stretch, double-click to retype. Shift-drag anywhere to cut the video.">{Icon.scissors} Shift-drag to cut</span>
+          <label className="btn ghost" title="Append another video">{Icon.plus} Add clip<input type="file" accept="video/*" hidden onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) clips.addFile(f) }} /></label>
+          <button className="ghost" title="Split the clip at the playhead (S)" onClick={() => clips.split()}>{Icon.scissors} Split</button>
+          {clips.busy && <span className="busy">{clips.busy}</span>}
+          {!clips.busy && clips.sel && (() => { const i = clips.segs.findIndex(g => g.id === clips.sel), sg = clips.segs[i]; return sg ? <>
+            {i > 0 && <select title="Transition into this clip" value={sg.transition} onChange={e => clips.setTransition(sg.id, e.target.value)}>{TRANSITIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>}
+            {i > 0 && sg.transition !== 'none' && <select title="Transition length" value={sg.tdur} onChange={e => clips.setTransition(sg.id, sg.transition, +e.target.value)}>{[0.25, 0.5, 0.75, 1].map(v => <option key={v} value={v}>{v}s</option>)}</select>}
+            {clips.segs.length > 1 && <button className="ghost danger" title="Remove this clip" onClick={() => clips.remove(sg.id)}>{Icon.trash}</button>}
+          </> : null })()}
+          <span className="hint muted" title="Drag a caption to move it, drag its edges to stretch, double-click to retype. Drag a clip to reorder. Shift-drag anywhere to cut the video.">Shift-drag to cut</span>
           {s.cuts.length > 0 && <button className="ghost" onClick={() => s.set({ cuts: [] })}>Clear cuts ({s.cuts.length})</button>}
         </div>
         <div className="tl-transport">
@@ -175,6 +213,7 @@ export function Timeline({ cards, seek, toggle, outDur }: { cards: Card[]; seek:
       </div>
       <div className="tl-body">
         <div className="tl-labels">
+          <span style={{ top: VID_Y, height: VID_H }}>{Icon.frame}Video</span>
           <span style={{ top: CAP_Y, height: CAP_H }}>{Icon.captions}Captions</span>
           <span style={{ top: AUD_Y, height: AUD_H }}>{Icon.audio}Audio</span>
           <span style={{ top: EL_Y, height: EL_H }}>{Icon.elements}Elements</span>

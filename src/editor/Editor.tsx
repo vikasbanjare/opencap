@@ -8,7 +8,10 @@ import { CaptionsPanel, StylePanel, ElementsPanel, AudioPanel, ExportPanel } fro
 import { api, type ProjectMeta } from '../lib/api'
 import { fmtTime, outDuration, mergeCuts, cutsFromWords, fillerIndices, silenceCuts, autoZooms } from '../lib/timeline'
 import { Icon } from '../ui/icons'
+import { LogoMark } from '../ui/Logo'
 import { TextToolbar } from './TextToolbar'
+import { Shortcuts } from './Shortcuts'
+import { useClips } from './useClips'
 import { hideCard, idxOf } from '../captions/edit'
 
 export function Editor({ project, onBack }: { project: ProjectMeta; onBack: () => void }) {
@@ -34,6 +37,8 @@ export function Editor({ project, onBack }: { project: ProjectMeta; onBack: () =
   const seek = useCallback((t: number) => { const v = videoRef.current; if (v) { v.currentTime = t; s.set({ time: t }) } }, [s])
   const toggle = () => { const v = videoRef.current; if (!v) return; if (v.paused) v.play(); else v.pause() }
   const selCard = s.selected != null ? cards.find(c => c.words.some(w => s.words.indexOf(w) === s.selected)) : undefined
+  const clips = useClips()
+  const [keys, setKeys] = useState(false)
   const [naming, setNaming] = useState<string | null>(null)
   const [name, setName] = useState(project.name)
   const rename = () => { const n = naming?.trim(); setNaming(null); if (n && n !== name) api.rename(project.id, n).then(m => setName(m.name)).catch(() => null) }
@@ -45,13 +50,16 @@ export function Editor({ project, onBack }: { project: ProjectMeta; onBack: () =
       const mod = e.metaKey || e.ctrlKey
       if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) s.redo(); else s.undo(); return }
       if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); s.redo(); return }
-      if (e.key === 'Escape') { s.set({ capSel: false, selectedOverlay: null, selected: null }); return }
+      if (e.key === '?') { setKeys(k => !k); return }
+      if (!mod && e.key.toLowerCase() === 's') { e.preventDefault(); clips.split(); return }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && clips.sel && !s.capSel && !s.selectedOverlay) { e.preventDefault(); clips.remove(clips.sel); return }
+      if (e.key === 'Escape') { setKeys(false); s.set({ capSel: false, selectedOverlay: null, selected: null }); return }
       if ((e.key === 'Delete' || e.key === 'Backspace') && s.capSel && selCard) { e.preventDefault(); s.setWords(ws => hideCard(ws, selCard)); s.set({ capSel: false }); return }
       if ((e.key === 'Delete' || e.key === 'Backspace') && s.selectedOverlay) { e.preventDefault(); s.removeOverlay(s.selectedOverlay); return }
       if (e.key === 'Enter' && s.capSel && selCard) { e.preventDefault(); s.set({ editCard: idxOf(s.words, selCard)[0] }); return }
       if (e.code === 'Space') { e.preventDefault(); toggle() }
       if (e.key === 'ArrowLeft') seek(Math.max(0, s.time - (e.shiftKey ? 1 : 1 / 30)))
-      if (e.key === 'ArrowRight') seek(Math.min(project.duration, s.time + (e.shiftKey ? 1 : 1 / 30)))
+      if (e.key === 'ArrowRight') seek(Math.min((s.project?.duration ?? project.duration), s.time + (e.shiftKey ? 1 : 1 / 30)))
     }
     window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey)
   })
@@ -64,15 +72,15 @@ export function Editor({ project, onBack }: { project: ProjectMeta; onBack: () =
     localStorage.removeItem(k)
     const f = fillerIndices(s.words)
     s.setWords(ws => ws.map((w, i) => f.includes(i) ? { ...w, deleted: true } : w))
-    s.set({ cuts: mergeCuts([...s.cuts, ...silenceCuts(s.words, 0.8, 0.15, project.duration)]), autoZoom: true, zooms: autoZooms(cards) })
+    s.set({ cuts: mergeCuts([...s.cuts, ...silenceCuts(s.words, 0.8, 0.15, (s.project?.duration ?? project.duration))]), autoZoom: true, zooms: autoZooms(cards) })
   }, [s.words.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const tabs: [typeof s.tab, string, React.ReactNode][] = [['captions', 'Subtitles', Icon.captions], ['style', 'Styles', Icon.style], ['elements', 'Elements', Icon.elements], ['audio', 'Audio', Icon.audio], ['export', 'Export', Icon.export]]
-  const outDur = cuts.length ? outDuration(cuts, project.duration) : project.duration
+  const outDur = cuts.length ? outDuration(cuts, (s.project?.duration ?? project.duration)) : (s.project?.duration ?? project.duration)
   return (
     <div className="editor">
       <header className="editor-bar">
-        <button className="logo-btn" onClick={onBack} title="All projects"><span className="logo-mark" /></button>
+        <button className="logo-btn" onClick={onBack} title="Pulse by aifloh · all projects"><LogoMark size={24} /></button>
         <button className="icon" onClick={onBack} title="All projects">{Icon.back}</button>
         <div className="history">
           <button className="icon" title="Undo (Cmd+Z)" disabled={!s.past.length} onClick={s.undo}>{Icon.undo}</button>
@@ -82,6 +90,7 @@ export function Editor({ project, onBack }: { project: ProjectMeta; onBack: () =
           ? <input className="rename" autoFocus onFocus={e => e.target.select()} value={naming} onChange={e => setNaming(e.target.value)} onBlur={rename} onKeyDown={e => { if (e.key === 'Enter') rename(); if (e.key === 'Escape') setNaming(null) }} />
           : <strong title="Click to rename" className="name" onClick={() => setNaming(name)}>{name}</strong>}<span className="muted">{project.width}×{project.height} · {fmtTime(outDur)}{cuts.length ? ` · ${cuts.length} cuts` : ''}</span></div>
         <span style={{ flex: 1 }} />
+        <button className="icon" title="Keyboard shortcuts (?)" onClick={() => setKeys(true)}>{Icon.keyboard}</button>
         <span className="saved">{Icon.check} Saved on this Mac</span>
         <button className="done" onClick={() => s.set({ tab: 'export' })}>{Icon.check} Done</button>
       </header>
@@ -96,6 +105,7 @@ export function Editor({ project, onBack }: { project: ProjectMeta; onBack: () =
         </aside>
         <main>
           {s.capSel && <TextToolbar card={selCard} />}
+          {clips.busy && <div className="stage-busy">{clips.busy} Rebuilding the video…</div>}
           <Preview cards={cards} videoRef={videoRef} />
           <div className="stage-pill">
             <label>{Icon.frame}<select value={s.aspect} onChange={e => s.set({ aspect: e.target.value as Aspect })}>
@@ -107,7 +117,8 @@ export function Editor({ project, onBack }: { project: ProjectMeta; onBack: () =
           </div>
         </main>
       </div>
-      <Timeline cards={cards} seek={seek} toggle={toggle} outDur={outDur} />
+      <Timeline cards={cards} seek={seek} toggle={toggle} outDur={outDur} clips={clips} />
+      {keys && <Shortcuts onClose={() => setKeys(false)} />}
     </div>
   )
 }

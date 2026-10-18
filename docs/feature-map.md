@@ -1,10 +1,10 @@
-# Feature map: Captions.ai, Kapwing, VEED → OpenCap
+# Feature map: Captions.ai, Kapwing, VEED → Pulse
 
 Scraped 2026-10-17 from the public tool indexes (`captions.ai`, `kapwing.com/tools`, `veed.io/tools`).
 Kapwing lists 342 tool pages, VEED 1,161 (most are SEO variants of the same tool). Grouped below by capability,
-with how OpenCap implements each **for free, locally, with no API keys**.
+with how Pulse implements each **for free, locally, with no API keys**.
 
-| Capability | Captions.ai | Kapwing | VEED | OpenCap (free/local) | Status |
+| Capability | Captions.ai | Kapwing | VEED | Pulse (free/local) | Status |
 |---|---|---|---|---|---|
 | Auto captions, word timestamps | ✔ 100+ styles | ✔ subtitles/caption-generator | ✔ add-subtitles, animated-subtitles | faster-whisper large-v3-turbo (CTranslate2, CPU int8), word timestamps + VAD | v1 |
 | Caption styles / animations | AI Edit styles (152) | basic presets | basic presets | 20 presets derived from the measured Captions.ai patterns (word-fill, blur-pop, append, line-stack, pills, bars, moving highlight box, hollow inactive, emphasis colour/size/glow) | v1 |
@@ -40,8 +40,8 @@ with how OpenCap implements each **for free, locally, with no API keys**.
 ## Kapwing specifics
 
 - Tool index categories: Video Editing, Subtitle/Translate/Transcribe, AI Generators, Audio Tools, Text to Speech, Social Media Editing, Convert & Compress, Image & GIF.
-- "Smart Cut" = silence + filler removal, the same two operations OpenCap derives from the transcript.
+- "Smart Cut" = silence + filler removal, the same two operations Pulse derives from the transcript.
 
 ## VEED specifics
 
-- Same core (subtitles, text-based editing, audio enhance) plus a very long tail of AI image filters; OpenCap ignores the image-filter tail.
+- Same core (subtitles, text-based editing, audio enhance) plus a very long tail of AI image filters; Pulse ignores the image-filter tail.

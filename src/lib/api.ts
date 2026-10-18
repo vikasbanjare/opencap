@@ -1,10 +1,12 @@
 import type { Word } from '../captions/types'
+import type { Clip, Seg } from './clips'
 
 export type ProjectMeta = {
   id: string; name: string; created: number; width: number; height: number; fps: number; duration: number
   hasAudio: boolean; playUrl: string; peaksUrl: string; language?: string
   transcribeStatus?: 'running' | 'done' | 'error' | null; transcribeError?: string | null
   transcript?: { language: string; words: Word[]; segments: { start: number; end: number; text: string }[] }
+  clips?: Clip[]; segments?: Seg[]
 }
 
 const j = async <T>(r: Response): Promise<T> => { if (!r.ok) throw new Error(`${r.status} ${await r.text()}`); return r.json() }
@@ -22,6 +24,15 @@ export const api = {
     x.open('POST', '/api/projects'); x.send(fd)
   }),
   rename: (id: string, name: string) => fetch(`/api/projects/${id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) }).then(j<ProjectMeta>),
+  addClip: (id: string, file: File, onProgress?: (p: number) => void) => new Promise<Clip>((res, rej) => {
+    const x = new XMLHttpRequest(); const fd = new FormData(); fd.append('file', file)
+    x.upload.onprogress = e => onProgress?.(e.loaded / (e.total || 1))
+    x.onload = () => x.status < 300 ? res(JSON.parse(x.responseText)) : rej(new Error(x.responseText))
+    x.onerror = () => rej(new Error('upload failed'))
+    x.open('POST', `/api/projects/${id}/clips`); x.send(fd)
+  }),
+  clipTranscript: (id: string, cid: string) => fetch(`/api/projects/${id}/clips/${cid}/transcript`).then(j<{ words: Word[] }>),
+  assemble: (id: string, segments: Omit<Seg, 'start'>[]) => fetch(`/api/projects/${id}/assemble`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ segments }) }).then(j<ProjectMeta>),
   retranscribe: (id: string, language?: string) => { const fd = new FormData(); if (language) fd.append('language', language); return fetch(`/api/projects/${id}/transcribe`, { method: 'POST', body: fd }).then(j) },
   srt: (cards: { start: number; end: number; text: string }[], format: 'srt' | 'vtt') =>
     fetch('/api/subtitles/srt', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ cards, format }) }).then(r => r.text()),

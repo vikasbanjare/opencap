@@ -22,7 +22,7 @@ def index() -> list[dict]:
     if _index is None and _CACHE.exists():
         _index = json.loads(_CACHE.read_text())
     if _index is None:
-        with urllib.request.urlopen(urllib.request.Request(INDEX_URL, headers={"User-Agent": "Mozilla/5.0 (OpenCap)"}), timeout=10) as r:
+        with urllib.request.urlopen(urllib.request.Request(INDEX_URL, headers={"User-Agent": "Mozilla/5.0 (Pulse)"}), timeout=10) as r:
             _index = json.load(r)
         _CACHE.parent.mkdir(parents=True, exist_ok=True)
         _CACHE.write_text(json.dumps(_index))
@@ -48,7 +48,7 @@ def pack_dir(models: Path, a: str, b: str) -> Path | None:
         return None
     d.mkdir(parents=True, exist_ok=True)
     zpath = d / "pack.zip"
-    req = urllib.request.Request(links[0], headers={"User-Agent": "Mozilla/5.0 (OpenCap)"})  # the CDN rejects urllib's default UA
+    req = urllib.request.Request(links[0], headers={"User-Agent": "Mozilla/5.0 (Pulse)"})  # the CDN rejects urllib's default UA
     with urllib.request.urlopen(req, timeout=120) as r, zpath.open("wb") as f:
         while chunk := r.read(1 << 20):
             f.write(chunk)

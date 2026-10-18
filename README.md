@@ -1,4 +1,7 @@
-# OpenCap
+# Pulse by aifloh
+
+<img src="public/favicon.svg" width="56" alt="Pulse logo">
+
 
 A free, local, open-source take on Captions.ai / Kapwing / VEED: upload or record a video, get word-level captions from Whisper, style them with animated presets reverse-engineered from Captions.ai, edit the video by editing the text, add B-roll, music, emoji and text, and export an MP4 **rendered in your own browser**. No accounts, no API keys, nothing leaves your machine.
 

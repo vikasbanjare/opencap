@@ -1,4 +1,4 @@
-"""OpenCap backend: upload, probe, transcribe (faster-whisper), audio tools, SRT.
+"""Pulse by aifloh backend: upload, probe, transcribe (faster-whisper), audio tools, SRT.
 
 Run:  .venv/bin/uvicorn main:app --port 8787 --reload
 Everything is local and free: ffmpeg + faster-whisper (CTranslate2) on CPU/Metal-less int8.
@@ -26,7 +26,7 @@ DATA.mkdir(parents=True, exist_ok=True)
 WHISPER_MODEL = os.environ.get("OPENCAP_WHISPER", "large-v3-turbo")  # cached locally already
 WHISPER_COMPUTE = os.environ.get("OPENCAP_COMPUTE", "int8")
 
-app = FastAPI(title="OpenCap API")
+app = FastAPI(title="Pulse API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.mount("/media", StaticFiles(directory=DATA), name="media")  # range requests supported
 
@@ -59,11 +59,15 @@ def project_dir(pid: str) -> Path:
     return d
 
 
+_meta_lock = threading.Lock()   # background transcriptions and requests both update meta.json
+
+
 def write_meta(d: Path, **kw):
-    meta = json.loads((d / "meta.json").read_text()) if (d / "meta.json").exists() else {}
-    meta.update(kw)
-    (d / "meta.json").write_text(json.dumps(meta, indent=1))
-    return meta
+    with _meta_lock:
+        meta = json.loads((d / "meta.json").read_text()) if (d / "meta.json").exists() else {}
+        meta.update(kw)
+        (d / "meta.json").write_text(json.dumps(meta, indent=1))
+        return meta
 
 
 # ---------- projects ----------
@@ -165,30 +169,32 @@ def get_model():
         return _model
 
 
+def transcribe_wav(wav: Path, language: Optional[str] = None) -> dict:
+    """Word-level transcript of a 16 kHz mono wav."""
+    model = get_model()
+    # decode the wav ourselves: avoids faster-whisper's PyAV path, which breaks on newer av releases
+    import wave, numpy as np
+    with wave.open(str(wav), "rb") as wf:
+        pcm = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16).astype(np.float32) / 32768.0
+    segments, info = model.transcribe(pcm, word_timestamps=True, vad_filter=True, language=language, beam_size=5,
+                                      vad_parameters=dict(min_silence_duration_ms=300))
+    words, segs = [], []
+    for s in segments:
+        segs.append(dict(start=round(s.start, 3), end=round(s.end, 3), text=s.text.strip()))
+        for w in (s.words or []):
+            t = w.word.strip()
+            if t:
+                words.append(dict(text=t, start=round(w.start, 3), end=round(w.end, 3), p=round(w.probability, 3)))
+    return dict(language=info.language, languageProb=round(info.language_probability, 3), words=words, segments=segs, model=WHISPER_MODEL)
+
+
 def transcribe_job(pid: str, language: Optional[str] = None):
     d = DATA / pid
     write_meta(d, transcribeStatus="running", transcribeError=None)
     try:
-        model = get_model()
-        # decode the 16 kHz mono wav ourselves: avoids faster-whisper's PyAV path, which breaks on newer av releases
-        import wave, numpy as np
-        with wave.open(str(d / "audio16k.wav"), "rb") as wf:
-            pcm = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16).astype(np.float32) / 32768.0
-        segments, info = model.transcribe(pcm, word_timestamps=True, vad_filter=True,
-                                          language=language, beam_size=5,
-                                          vad_parameters=dict(min_silence_duration_ms=300))
-        words, segs = [], []
-        for s in segments:
-            segs.append(dict(start=round(s.start, 3), end=round(s.end, 3), text=s.text.strip()))
-            for w in (s.words or []):
-                t = w.word.strip()
-                if not t:
-                    continue
-                words.append(dict(text=t, start=round(w.start, 3), end=round(w.end, 3), p=round(w.probability, 3)))
-        tr = dict(language=info.language, languageProb=round(info.language_probability, 3), words=words, segments=segs,
-                  model=WHISPER_MODEL)
+        tr = transcribe_wav(d / "audio16k.wav", language)
         (d / "transcript.json").write_text(json.dumps(tr, ensure_ascii=False))
-        write_meta(d, transcribeStatus="done", language=info.language)
+        write_meta(d, transcribeStatus="done", language=tr["language"])
     except Exception as e:  # keep the error visible in the UI
         write_meta(d, transcribeStatus="error", transcribeError=str(e))
 
@@ -463,3 +469,128 @@ def list_renders(pid: str):
 @app.get("/api/health")
 def health():
     return {"ok": True, "whisper": WHISPER_MODEL, "ffmpeg": run(["ffmpeg", "-version"]).stdout.split("\n")[0]}
+
+
+# ---------- multiple clips + transitions ----------
+# A project is a list of segments, each a [in, out] range of one clip, optionally entered through a transition.
+# Every change re-renders play.mp4 (and its 16 kHz audio + waveform), so preview and export keep working on one file.
+# ponytail: full re-render per edit; fine for shorts, switch to per-segment proxies + concat if long videos get slow.
+
+XFADE = {"fade": "fade", "black": "fadeblack", "white": "fadewhite", "dissolve": "dissolve", "slide": "slideleft",
+         "slideup": "slideup", "wipe": "wipeleft", "circle": "circleopen", "zoom": "zoomin", "blur": "hblur", "pixel": "pixelize"}
+
+
+def source_file(d: Path) -> Path:
+    return next(p for p in sorted(d.glob("source.*")))
+
+
+def clips_of(d: Path, meta: dict) -> list[dict]:
+    """The clip list, starting with the original upload."""
+    clips = meta.get("clips")
+    if clips:
+        return clips
+    info = probe(source_file(d))
+    return [dict(id="source", file=source_file(d).name, name=meta.get("name"), duration=info["duration"],
+                 hasAudio=info["hasAudio"], transcribeStatus="done")]
+
+
+def clip_transcribe_job(pid: str, cid: str):
+    d = DATA / pid
+    def mark(**kw):
+        with _meta_lock:
+            meta = json.loads((d / "meta.json").read_text())
+            for c in meta.get("clips", []):
+                if c["id"] == cid:
+                    c.update(kw)
+            (d / "meta.json").write_text(json.dumps(meta, indent=1))
+    try:
+        tr = transcribe_wav(d / f"clip_{cid}.wav")
+        (d / f"clip_{cid}.transcript.json").write_text(json.dumps(tr, ensure_ascii=False))
+        mark(transcribeStatus="done")
+    except Exception as e:
+        mark(transcribeStatus="error", transcribeError=str(e))
+
+
+@app.post("/api/projects/{pid}/clips")
+async def add_clip(pid: str, file: UploadFile = File(...)):
+    d = project_dir(pid)
+    cid = uuid.uuid4().hex[:8]
+    ext = Path(file.filename or "clip.mp4").suffix.lower() or ".mp4"
+    dst = d / f"clip_{cid}{ext}"
+    with dst.open("wb") as f:
+        shutil.copyfileobj(file.file, f)
+    info = probe(dst)
+    if not info["duration"]:
+        dst.unlink(missing_ok=True)
+        raise HTTPException(400, "could not read that video")
+    run(["ffmpeg", "-v", "error", "-y", "-i", str(dst), "-vn", "-ac", "1", "-ar", "16000", str(d / f"clip_{cid}.wav")])
+    meta = json.loads((d / "meta.json").read_text())
+    clip = dict(id=cid, file=dst.name, name=file.filename, duration=info["duration"], hasAudio=info["hasAudio"],
+                transcribeStatus="running" if info["hasAudio"] else "done")
+    write_meta(d, clips=[*clips_of(d, meta), clip])
+    if info["hasAudio"]:
+        threading.Thread(target=clip_transcribe_job, args=(pid, cid), daemon=True).start()
+    else:
+        (d / f"clip_{cid}.transcript.json").write_text(json.dumps(dict(language=None, words=[], segments=[])))
+    return clip
+
+
+@app.get("/api/projects/{pid}/clips/{cid}/transcript")
+def clip_transcript(pid: str, cid: str):
+    d = project_dir(pid)
+    if cid == "source":
+        return json.loads((d / "transcript.json").read_text())
+    f = d / f"clip_{re.sub(r'[^a-f0-9]', '', cid)}.transcript.json"
+    if not f.exists():
+        raise HTTPException(404, "not transcribed yet")
+    return json.loads(f.read_text())
+
+
+@app.post("/api/projects/{pid}/assemble")
+def assemble(pid: str, payload: dict):
+    d = project_dir(pid)
+    meta = json.loads((d / "meta.json").read_text())
+    clips = {c["id"]: c for c in clips_of(d, meta)}
+    segs = payload.get("segments") or []
+    if not segs or any(s.get("clip") not in clips for s in segs):
+        raise HTTPException(400, "unknown clip in segments")
+    W, H, FPS = meta["width"], meta["height"], meta.get("fps") or 30
+    W, H = W - W % 2, H - H % 2
+    args, fg, out = ["ffmpeg", "-v", "error", "-y"], [], []
+    for k, s in enumerate(segs):
+        c = clips[s["clip"]]
+        s["in"] = max(0.0, float(s["in"])); s["out"] = min(float(c["duration"]), float(s["out"]))
+        if s["out"] - s["in"] < 0.1:
+            raise HTTPException(400, "segment too short")
+        args += ["-ss", f"{s['in']:.3f}", "-t", f"{s['out'] - s['in']:.3f}", "-i", str(d / c["file"])]
+        L = s["out"] - s["in"]
+        fg.append(f"[{k}:v]scale={W}:{H}:force_original_aspect_ratio=decrease,pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:black,"
+                  f"setsar=1,fps={FPS},format=yuv420p,setpts=PTS-STARTPTS,trim=duration={L:.3f}[v{k}]")
+        fg.append(f"[{k}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,asetpts=PTS-STARTPTS,apad,atrim=duration={L:.3f}[a{k}]"
+                  if c.get("hasAudio") else f"anullsrc=r=48000:cl=stereo,atrim=duration={L:.3f}[a{k}]")
+    cv, ca, total, starts = "v0", "a0", segs[0]["out"] - segs[0]["in"], [0.0]
+    for k in range(1, len(segs)):
+        s, L = segs[k], segs[k]["out"] - segs[k]["in"]
+        t = XFADE.get(s.get("transition") or "none")
+        dur = min(float(s.get("tdur") or 0.5), L / 2, total / 2) if t else 0
+        if t and dur >= 0.05:
+            fg.append(f"[{cv}][v{k}]xfade=transition={t}:duration={dur:.3f}:offset={total - dur:.3f}[cv{k}]")
+            fg.append(f"[{ca}][a{k}]acrossfade=d={dur:.3f}[ca{k}]")
+            starts.append(total - dur); total += L - dur
+        else:
+            fg.append(f"[{cv}][{ca}][v{k}][a{k}]concat=n=2:v=1:a=1[cv{k}][ca{k}]")
+            starts.append(total); total += L
+        cv, ca = f"cv{k}", f"ca{k}"
+    tmp = d / "play.build.mp4"
+    r = run(args + ["-filter_complex", ";".join(fg), "-map", f"[{cv}]", "-map", f"[{ca}]", "-c:v", "libx264", "-preset", "veryfast",
+                    "-crf", "20", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(tmp)], timeout=1800)
+    if r.returncode != 0 or not tmp.exists():
+        raise HTTPException(500, f"render failed: {(r.stderr or '')[-400:]}")
+    os.replace(tmp, d / "play.mp4")   # replaces a symlink itself, never the original upload it pointed to
+    run(["ffmpeg", "-v", "error", "-y", "-i", str(d / "play.mp4"), "-vn", "-ac", "1", "-ar", "16000", str(d / "audio16k.wav")])
+    (d / "peaks.json").write_text(json.dumps(waveform_peaks(d / "audio16k.wav")))
+    v = int(time.time() * 1000)
+    out_segs = [dict(id=s["id"], clip=s["clip"], **{"in": round(s["in"], 3), "out": round(s["out"], 3)}, transition=s.get("transition") or "none",
+                     tdur=float(s.get("tdur") or 0.5), start=round(starts[k], 3)) for k, s in enumerate(segs)]
+    return write_meta(d, segments=out_segs, clips=list(clips.values()), duration=round(probe(d / "play.mp4")["duration"], 3),
+                      playUrl=f"/media/{pid}/play.mp4?v={v}", peaksUrl=f"/media/{pid}/peaks.json?v={v}")

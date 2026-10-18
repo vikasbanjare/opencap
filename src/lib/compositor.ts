@@ -75,3 +75,13 @@ function drawOverlays(ctx: CanvasRenderingContext2D, W: number, H: number, f: Fr
     ctx.restore()
   }
 }
+
+/** On-screen box of an element in canvas pixels (centre x/y, width, height); matches drawOverlays. */
+export function overlayBox(ctx: CanvasRenderingContext2D, o: Overlay, W: number, H: number, images: Map<string, HTMLImageElement>, videos?: Map<string, HTMLVideoElement>) {
+  const k = W / 1080, x = o.x * W, y = o.y * H
+  if (o.kind === 'video') { const el = videos?.get(o.src ?? ''); const w = (o.w ?? 0.45) * W; return { x, y, w, h: el?.videoWidth ? w * el.videoHeight / el.videoWidth : w * 9 / 16 } }
+  if (o.kind === 'image') { const img = images.get(o.src ?? ''); const w = (o.w ?? 0.4) * W; return { x, y, w, h: img?.naturalWidth ? w * img.naturalHeight / img.naturalWidth : w } }
+  ctx.save(); ctx.font = `${o.kind === 'emoji' ? 400 : 800} ${o.size * k}px "${o.font}", "Apple Color Emoji", sans-serif`
+  const w = ctx.measureText(o.text ?? '').width; ctx.restore()
+  return { x, y, w: Math.max(w, o.size * k * 0.6), h: o.size * k * 1.15 }
+}

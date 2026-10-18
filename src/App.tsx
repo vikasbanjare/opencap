@@ -4,6 +4,7 @@ import { Editor } from './editor/Editor'
 import { fmtTime } from './lib/timeline'
 import { Record } from './Record'
 import { Icon } from './ui/icons'
+import { Brand } from './ui/Logo'
 import { StyleThumb } from './editor/StyleThumb'
 import { PRESETS, presetById } from './captions/presets'
 
@@ -23,7 +24,7 @@ export default function App() {
   const pick = useRef<HTMLInputElement>(null)
   const fileUrl = useMemo(() => file ? URL.createObjectURL(file) : null, [file])
   const featured = useMemo(() => FEATURED.map(presetById).filter(Boolean), [])
-  const refresh = () => api.list().then(setProjects).catch(e => setErr(`The OpenCap server is not reachable (${e.message}). Start it, then reload this page.`))
+  const refresh = () => api.list().then(setProjects).catch(e => setErr(`The Pulse server is not reachable (${e.message}). Start it, then reload this page.`))
   useEffect(() => { refresh() }, [])
   useEffect(() => { if (!projects.some(p => p.transcribeStatus === 'running')) return; const id = setInterval(refresh, 3000); return () => clearInterval(id) }, [projects])
   useEffect(() => { const id = new URLSearchParams(location.search).get('p'); if (id) api.get(id).then(setOpen).catch(() => null) }, [])
@@ -47,7 +48,7 @@ export default function App() {
   return (
     <div className="home">
       <nav className="home-nav">
-        <div className="logo"><span className="logo-mark" />OpenCap</div>
+        <Brand size={26} />
         <span className="pill">Free · private · runs on your Mac</span>
       </nav>
       <section className="hero">

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { layoutCard } from '../captions/engine'
 import { idxOf, setCardText } from '../captions/edit'
 import { useEditor, aspectSize, mediaCache, ensureMedia } from '../store'
-import { drawFrame, videoOverlaysAt } from '../lib/compositor'
+import { drawFrame, overlayBox, videoOverlaysAt } from '../lib/compositor'
 import { cutsFromWords, inCut, mergeCuts } from '../lib/timeline'
 import type { Card } from '../captions/types'
 
@@ -12,7 +12,7 @@ export function Preview({ cards, videoRef }: { cards: Card[]; videoRef: React.Re
   const musicRef = useRef<HTMLAudioElement>(null)
   const size = useMemo(() => s.project ? aspectSize(s.aspect, s.project, 1920) : { w: 1080, h: 1920 }, [s.aspect, s.project])
   const allCuts = useMemo(() => mergeCuts([...s.cuts, ...cutsFromWords(s.words)]), [s.cuts, s.words])
-  const dragging = useRef<{ id: string; dx: number; dy: number } | null>(null)
+  const dragging = useRef<{ id: string; dx: number; dy: number; resize?: { d0: number; size: number; w: number } } | null>(null)
   const capDrag = useRef<{ mode: 'move' | 'size'; x0: number; y0: number; ax: number; ay: number; size: number; d0: number } | null>(null)
   const [editing, setEditing] = useState<{ card: Card; text: string } | null>(null)
   // caption under the playhead and its box in canvas pixels
@@ -58,6 +58,15 @@ export function Preview({ cards, videoRef }: { cards: Card[]; videoRef: React.Re
         }
         const ctx = c.getContext('2d')!
         drawFrame(ctx, c.width, c.height, { src: v, srcW: v.videoWidth || s.project.width, srcH: v.videoHeight || s.project.height, t, cards, style: s.style, captionsOn: s.captionsOn, overlays: s.overlays, zooms: s.zooms, pan: s.pan, images: mediaCache.images, videos: mediaCache.videos })
+        // selection frame around the selected element (preview only)
+        const so = s.overlays.find(o => o.id === useEditor.getState().selectedOverlay && t >= o.start && t < o.end && (o.kind !== 'video' || o.fit === 'pip'))
+        if (so) {
+          const b = overlayBox(ctx, so, c.width, c.height, mediaCache.images, mediaCache.videos), hs = c.width * 0.018
+          ctx.save(); ctx.setLineDash([c.width * 0.012, c.width * 0.008]); ctx.lineWidth = Math.max(2, c.width / 400); ctx.strokeStyle = '#2C57E6'
+          ctx.strokeRect(b.x - b.w / 2, b.y - b.h / 2, b.w, b.h); ctx.setLineDash([]); ctx.fillStyle = '#fff'
+          for (const [hx, hy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { ctx.beginPath(); ctx.rect(b.x + hx * b.w / 2 - hs / 2, b.y + hy * b.h / 2 - hs / 2, hs, hs); ctx.fill(); ctx.stroke() }
+          ctx.restore()
+        }
         // selection frame around the caption (preview only, never exported)
         const card = useEditor.getState().capSel && s.captionsOn ? cards.find(cd => t >= cd.start && t < cd.end) : undefined
         if (card) {
@@ -86,6 +95,17 @@ export function Preview({ cards, videoRef }: { cards: Card[]; videoRef: React.Re
 
   // pointer: elements first, then the caption (move, or resize from its corner), else clear selection
   const toFrame = (e: React.PointerEvent | React.MouseEvent) => { const r = canvasRef.current!.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height } }
+  // elements under the pointer (topmost first); a corner of the selected one resizes it
+  const ovHit = (p: { x: number; y: number }) => {
+    const ctx = canvasRef.current!.getContext('2d')!, px = p.x * size.w, py = p.y * size.h, hs = size.w * 0.03
+    for (const o of [...s.overlays].reverse()) {
+      if ((o.kind === 'video' && o.fit !== 'pip') || s.time < o.start || s.time >= o.end) continue
+      const b = overlayBox(ctx, o, size.w, size.h, mediaCache.images, mediaCache.videos)
+      const corner = o.id === s.selectedOverlay && [[-1, -1], [1, -1], [-1, 1], [1, 1]].some(([hx, hy]) => Math.abs(px - (b.x + hx * b.w / 2)) < hs && Math.abs(py - (b.y + hy * b.h / 2)) < hs)
+      if (corner || (Math.abs(px - b.x) <= b.w / 2 && Math.abs(py - b.y) <= b.h / 2)) return { o, b, corner }
+    }
+    return null
+  }
   const capHit = (p: { x: number; y: number }) => {
     const card = s.captionsOn ? activeCard() : undefined; if (!card) return null
     const b = capBox(card), pad = 0.03
@@ -96,8 +116,12 @@ export function Preview({ cards, videoRef }: { cards: Card[]; videoRef: React.Re
   }
   const onDown = (e: React.PointerEvent) => {
     const p = toFrame(e)
-    const hit = [...s.overlays].reverse().find(o => (o.kind !== 'video' || o.fit === 'pip') && Math.abs(o.x - p.x) < 0.15 && Math.abs(o.y - p.y) < 0.1 && s.time >= o.start && s.time < o.end)
-    if (hit) { dragging.current = { id: hit.id, dx: hit.x - p.x, dy: hit.y - p.y }; s.set({ selectedOverlay: hit.id, capSel: false, tab: 'elements' }); (e.target as Element).setPointerCapture(e.pointerId); return }
+    const ov = ovHit(p)
+    if (ov) {
+      const { o, b, corner } = ov
+      dragging.current = { id: o.id, dx: o.x - p.x, dy: o.y - p.y, resize: corner ? { d0: Math.max(4, Math.hypot(p.x * size.w - b.x, p.y * size.h - b.y)), size: o.size, w: o.w ?? (o.kind === 'image' ? 0.4 : 0.45) } : undefined }
+      s.set({ selectedOverlay: o.id, capSel: false, tab: 'elements' }); (e.target as Element).setPointerCapture(e.pointerId); return
+    }
     const ch = capHit(p)
     if (ch) {
       const st = s.style
@@ -113,8 +137,15 @@ export function Preview({ cards, videoRef }: { cards: Card[]; videoRef: React.Re
       else { const ch = capHit(p) ?? { cx: cd.ax, cy: cd.ay }; const d = Math.hypot((p.x - ch.cx) * size.w, (p.y - ch.cy) * size.h) / size.w; s.setStyle(x => ({ ...x, font: { ...x.font, size: Math.round(Math.min(220, Math.max(20, cd.size * d / cd.d0))) } })) }
       return
     }
-    if (!dragging.current) { const ch = capHit(p); canvasRef.current!.style.cursor = ch ? (ch.corner ? 'nwse-resize' : 'move') : 'default'; return }
-    s.updateOverlay(dragging.current.id, { x: Math.min(1, Math.max(0, p.x + dragging.current.dx)), y: Math.min(1, Math.max(0, p.y + dragging.current.dy)) })
+    if (!dragging.current) { const ov = ovHit(p), ch = ov ? null : capHit(p); canvasRef.current!.style.cursor = ov ? (ov.corner ? 'nwse-resize' : 'move') : ch ? (ch.corner ? 'nwse-resize' : 'move') : 'default'; return }
+    const dg = dragging.current, o = s.overlays.find(x => x.id === dg.id)
+    if (dg.resize && o) {
+      const r = Math.max(0.15, Math.hypot(p.x * size.w - o.x * size.w, p.y * size.h - o.y * size.h) / dg.resize.d0)
+      if (o.kind === 'text' || o.kind === 'emoji') s.updateOverlay(o.id, { size: Math.round(Math.min(600, Math.max(16, dg.resize.size * r))) })
+      else s.updateOverlay(o.id, { w: Math.min(1, Math.max(0.08, dg.resize.w * r)) })
+      return
+    }
+    s.updateOverlay(dg.id, { x: Math.min(1, Math.max(0, p.x + dg.dx)), y: Math.min(1, Math.max(0, p.y + dg.dy)) })
   }
   const onUp = () => { dragging.current = null; capDrag.current = null }
   const openEditor = (card: Card) => { setEditing({ card, text: card.words.map(w => w.text).join(' ') }) }

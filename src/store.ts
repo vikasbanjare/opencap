@@ -23,6 +23,7 @@ export type EditorState = {
   selectedOverlay: string | null
   tab: 'captions' | 'style' | 'elements' | 'audio' | 'export'
   captionsOn: boolean
+  clipWords: string[]     // clips whose transcript words are already on the timeline
   capSel: boolean        // a caption is selected on the canvas (shows the text toolbar)
   editCard: number | null // first-word index of the caption being retyped inline
   past: Doc[]; future: Doc[]
@@ -40,7 +41,7 @@ export type EditorState = {
 const key = (id: string) => `opencap:${id}`
 
 // Undo history covers the document, not UI state (time, tab, selection).
-const DOC = ['words', 'style', 'cuts', 'zooms', 'autoZoom', 'overlays', 'music', 'aspect', 'pan', 'audioUrl', 'captionsOn'] as const
+const DOC = ['words', 'style', 'cuts', 'zooms', 'autoZoom', 'overlays', 'music', 'aspect', 'pan', 'audioUrl', 'captionsOn', 'clipWords'] as const
 type Doc = Pick<EditorState, typeof DOC[number]>
 const docOf = (s: EditorState): Doc => Object.fromEntries(DOC.map(k => [k, s[k]])) as Doc
 let lastPush = 0
@@ -54,7 +55,7 @@ function record(get: () => EditorState, set: (p: Partial<EditorState>) => void) 
 export const useEditor = create<EditorState>((set, get) => ({
   project: null, words: [], style: PRESETS[0], cuts: [], zooms: [], autoZoom: false, overlays: [], music: null, aspect: 'source', pan: 0.5,
   audioUrl: null, time: 0, playing: false, selected: null, selectedOverlay: null, tab: 'captions', captionsOn: true,
-  capSel: false, editCard: null, past: [], future: [],
+  clipWords: ['source'], capSel: false, editCard: null, past: [], future: [],
   undo: () => { const s = get(); const prev = s.past[s.past.length - 1]; if (!prev) return; lastPush = 0
     set({ ...prev, past: s.past.slice(0, -1), future: [docOf(s), ...s.future] }); persist(get()) },
   redo: () => { const s = get(); const next = s.future[0]; if (!next) return; lastPush = 0
@@ -62,7 +63,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   set: p => { if (Object.keys(p).some(k => (DOC as readonly string[]).includes(k))) record(get, set); set(p); persist(get()) },
   load: (m, serverState) => {
     const saved = localStorage.getItem(key(m.id))
-    const base = { project: m, words: m.transcript?.words ?? [], style: PRESETS[0], cuts: [], zooms: [], autoZoom: false, overlays: [], music: null, aspect: 'source' as Aspect, pan: 0.5, audioUrl: null, time: 0, playing: false, selected: null, selectedOverlay: null, capSel: false, editCard: null, past: [], future: [] }
+    const base = { project: m, words: m.transcript?.words ?? [], style: PRESETS[0], cuts: [], zooms: [], autoZoom: false, overlays: [], music: null, aspect: 'source' as Aspect, pan: 0.5, audioUrl: null, time: 0, playing: false, selected: null, selectedOverlay: null, clipWords: ['source'], capSel: false, editCard: null, past: [], future: [] }
     const src = serverState ?? (saved ? JSON.parse(saved) : null)
     if (src) {
       try {
@@ -87,8 +88,8 @@ function persist(s: EditorState) {
   if (!s.project) return
   clearTimeout(timer)
   timer = window.setTimeout(() => {
-    const { words, style, cuts, zooms, autoZoom, overlays, music, aspect, pan, audioUrl, captionsOn } = s
-    const body = JSON.stringify({ words, style, cuts, zooms, autoZoom, overlays: overlays.filter(o => !o.src?.startsWith('blob:')), music, aspect, pan, audioUrl, captionsOn })
+    const { words, style, cuts, zooms, autoZoom, overlays, music, aspect, pan, audioUrl, captionsOn, clipWords } = s
+    const body = JSON.stringify({ words, style, cuts, zooms, autoZoom, overlays: overlays.filter(o => !o.src?.startsWith('blob:')), music, aspect, pan, audioUrl, captionsOn, clipWords })
     localStorage.setItem(key(s.project!.id), body)
     fetch(`/api/projects/${s.project!.id}/state`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body }).catch(() => null)
   }, 300)
