@@ -11,7 +11,7 @@ import { StyleThumb } from './StyleThumb'
 import { DEFAULT_ANIM } from '../captions/engine'
 import type { Anim } from '../captions/types'
 
-export const FONTS = ['Inter', 'Oswald', 'Montserrat', 'Bebas Neue', 'Poppins', 'Nunito', 'Playfair Display', 'EB Garamond', 'Caveat', 'Space Mono', 'Anton', 'Permanent Marker', 'Bangers', 'Luckiest Guy', 'Archivo Black', 'Lilita One', 'Righteous', 'Fredoka', 'DM Serif Display', 'Unbounded', 'Kanit', 'Rubik']
+export const FONTS = ['Inter', 'Oswald', 'Montserrat', 'Bebas Neue', 'Poppins', 'Nunito', 'Playfair Display', 'EB Garamond', 'Caveat', 'Space Mono', 'Anton', 'Permanent Marker', 'Bangers', 'Luckiest Guy', 'Archivo Black', 'Lilita One', 'Righteous', 'Fredoka', 'DM Serif Display', 'Unbounded', 'Kanit', 'Rubik', 'Archivo', 'Arimo', 'Baloo 2', 'Bowlby One', 'Coda', 'Comic Neue', 'Courier Prime', 'Creepster', 'Dancing Script', 'Fira Sans', 'Inconsolata', 'Kalam', 'Monoton', 'Pixelify Sans', 'Source Code Pro', 'Source Sans 3', 'Tilt Neon']
 const LANGS: Record<string, string> = { en: 'English', es: 'Spanish', fr: 'French', de: 'German', pt: 'Portuguese', it: 'Italian', hi: 'Hindi', ar: 'Arabic', zh: 'Chinese', ja: 'Japanese', ko: 'Korean', ru: 'Russian', tr: 'Turkish', id: 'Indonesian', nl: 'Dutch', pl: 'Polish', uk: 'Ukrainian', vi: 'Vietnamese', th: 'Thai', sv: 'Swedish' }
 
 // ---------------- Captions ----------------

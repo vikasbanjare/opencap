@@ -717,9 +717,38 @@ BASIC.forEach((b: { id: string; name: string; colors: string[]; reveal: string; 
   }))
 })
 
+// ===== VEED and Kapwing presets (captions-ai-research/veed-kapwing-styles.json) =====
+// Researched specs mapped onto the renderer; styles that duplicate an existing Pulse look are left out (skip: true).
+import EXTRA from './veed-kapwing-styles.json'
+type Spec = { name: string; skip?: boolean; font: string; weight: number; italic: boolean; case: CaptionStyle['font']['case']; text: string; stroke: string | null; strokePx: number
+  shadow: 'none' | 'soft' | 'hard'; box: 'none' | 'pill' | 'bar' | 'line'; boxFill: string | null; position: 'top' | 'center' | 'bottom'; reveal: CaptionStyle['reveal']['mode']
+  wordsPerCard: number; highlight: string; highlightColor: string | null; wordIn: string }
+const slug = (n: string) => n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+for (const [src, list] of [['VEED', (EXTRA as { veed: Spec[] }).veed], ['Kapwing', (EXTRA as { kapwing: Spec[] }).kapwing]] as const) {
+  for (const x of list) {
+    if (x.skip) continue
+    const hot = x.highlightColor ?? '#FFE600'
+    const anim: Partial<Anim> = { word: x.wordIn === 'fade' ? 'none' : (x.wordIn as Anim['word']) ?? 'none', stagger: 60 }
+    if (['color', 'scale', 'sweep', 'glow', 'underline'].includes(x.highlight)) { anim.active = x.highlight as Anim['active']; anim.activeColor = hot }
+    PRESETS.push(mk({ id: `${src.toLowerCase()}-${slug(x.name)}`, name: x.name, tags: [src] }, {
+      font: { family: x.font, weight: x.weight, italic: x.italic, case: x.case, size: x.wordsPerCard <= 2 ? 76 : x.wordsPerCard === 3 ? 64 : 52 },
+      layout: { anchorY: x.position === 'top' ? 0.2 : x.position === 'center' ? 0.5 : 0.78 },
+      reveal: { mode: x.reveal, inactiveOpacity: x.reveal === 'wordFill' ? 0.45 : 0.4, wordMs: 90 },
+      entrance: x.wordIn === 'fade' ? { durationMs: 140, blurPx: 0, scaleFrom: 1 } : { durationMs: 0, blurPx: 0, scaleFrom: 1 },
+      emphasis: x.highlight === 'box' ? { mode: 'none', box: { fill: hot, radius: 10, padX: 0.25, padY: 0.1 } } : { mode: 'none' },
+      colors: { text: x.text, stroke: x.stroke ?? '#000000', shadow: '#000000' },
+      stroke: x.stroke ? x.strokePx : 0,
+      shadow: x.shadow === 'none' ? { blur: 0, opacity: 0, offsetY: 0 } : x.shadow === 'hard' ? { blur: 0, opacity: 0.9, offsetY: 5 } : { blur: 12, opacity: 0.5, offsetY: 2 },
+      box: x.box === 'none' ? { mode: 'none' } : { mode: x.box === 'line' ? 'linePill' : x.box, fill: x.boxFill ?? '#000000', radius: x.box === 'pill' ? 14 : 4, padX: 0.4, padY: 0.2 },
+      anim,
+      chunk: { maxWords: x.wordsPerCard, maxChars: x.wordsPerCard * 8 + 4 },
+    }))
+  }
+}
+
 export const GOOGLE_FONTS = ['Inter:wght@400;500;600;700;800;900', 'Oswald:wght@500;700', 'Montserrat:wght@600;800;900',
   'Bebas Neue', 'Poppins:wght@500;600;700', 'Nunito:wght@600;700;800', 'Playfair Display:ital,wght@0,400;0,700;1,400',
-  'EB Garamond:ital,wght@0,500;1,500', 'Caveat:wght@700', 'Space Mono:wght@700', 'Anton', 'Permanent Marker', 'Bangers', 'Luckiest Guy', 'Archivo Black', 'Lilita One', 'Righteous', 'Fredoka:wght@600;700', 'DM Serif Display', 'Unbounded:wght@700;900', 'Kanit:ital,wght@1,800', 'Rubik:wght@700;900']
+  'EB Garamond:ital,wght@0,500;1,500', 'Caveat:wght@700', 'Space Mono:wght@700', 'Anton', 'Permanent Marker', 'Bangers', 'Luckiest Guy', 'Archivo Black', 'Lilita One', 'Righteous', 'Fredoka:wght@600;700', 'DM Serif Display', 'Unbounded:wght@700;900', 'Kanit:ital,wght@1,800', 'Rubik:wght@700;900', 'Archivo:wght@800', 'Arimo:ital,wght@0,400;0,700;1,700', 'Baloo 2:wght@800', 'Bowlby One', 'Coda:wght@800', 'Comic Neue:ital,wght@1,700', 'Courier Prime:wght@700', 'Creepster', 'Dancing Script:wght@700', 'Fira Sans:wght@600', 'Inconsolata:wght@500', 'Kalam:wght@400', 'Monoton', 'Pixelify Sans:wght@600', 'Source Code Pro:wght@500', 'Source Sans 3:wght@600', 'Tilt Neon']
 
 export const ALL_TAGS = [...new Set(PRESETS.flatMap(p => p.tags))].sort()
 export const presetById = (id: string) => PRESETS.find(p => p.id === id) ?? PRESETS[0]
