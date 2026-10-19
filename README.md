@@ -3,8 +3,10 @@ title: Pulse by aifloh
 emoji: 🎬
 colorFrom: blue
 colorTo: green
-sdk: docker
-app_port: 7860
+sdk: gradio
+sdk_version: 6.30.0
+python_version: '3.12'
+app_file: app.py
 pinned: false
 short_description: Free AI captions and video editor
 ---
