@@ -79,7 +79,9 @@
    "highlight": "color",
    "highlightColor": "#F4F269",
    "wordIn": "slideUp",
-   "evidence": "observed"
+   "evidence": "observed",
+   "skip": true,
+   "skipReason": "same as VEED Glide in Pulse (script-size difference not reproducible)"
   },
   {
    "name": "Fusion",
@@ -99,7 +101,9 @@
    "highlight": "color",
    "highlightColor": "#FFE14D",
    "wordIn": "pop",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "skip": true,
+   "skipReason": "same as VEED Shadeplay in Pulse"
   },
   {
    "name": "Terminal",
@@ -399,7 +403,9 @@
    "highlight": "color",
    "highlightColor": "#00E676",
    "wordIn": "pop",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "skip": true,
+   "skipReason": "overlaps Captions.ai Alcyone"
   },
   {
    "name": "Ali",
@@ -789,7 +795,9 @@
    "highlight": "color",
    "highlightColor": "#FFE066",
    "wordIn": "none",
-   "evidence": "observed"
+   "evidence": "observed",
+   "skip": true,
+   "skipReason": "same as Kapwing All Caps in Pulse (mixed-font keyword not reproducible)"
   },
   {
    "name": "Pop-Up",
@@ -1155,7 +1163,9 @@
    "highlight": "none",
    "highlightColor": null,
    "wordIn": "none",
-   "evidence": "observed"
+   "evidence": "observed",
+   "skip": true,
+   "skipReason": "identical to Captions.ai Closed Cap"
   },
   {
    "name": "Animated",
@@ -1175,7 +1185,9 @@
    "highlight": "color",
    "highlightColor": "#FF2D55",
    "wordIn": "pop",
-   "evidence": "observed"
+   "evidence": "observed",
+   "skip": true,
+   "skipReason": "overlaps Captions.ai Heat"
   }
  ]
 }
