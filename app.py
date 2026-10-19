@@ -12,6 +12,9 @@ try:  # ZeroGPU wants at least one GPU function before it will start a Space; Pu
     @spaces.GPU
     def _gpu_probe():
         return "ok"
+
+    if hasattr(spaces, "zero") and hasattr(spaces.zero, "startup"):
+        spaces.zero.startup()  # normally run by gr.Blocks.launch, which we skip; reports the GPU function to ZeroGPU
 except ImportError:
     pass
 
