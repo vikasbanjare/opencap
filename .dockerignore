@@ -1,0 +1,8 @@
+node_modules
+dist
+server/.venv
+server/.venv-clone
+server/data
+server/models
+**/__pycache__
+.git

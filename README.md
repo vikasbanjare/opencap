@@ -1,3 +1,14 @@
+---
+title: Pulse by aifloh
+emoji: 🎬
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 7860
+pinned: false
+short_description: Free AI captions and video editor
+---
+
 # Pulse by aifloh
 
 <img src="public/favicon.svg" width="56" alt="Pulse logo">

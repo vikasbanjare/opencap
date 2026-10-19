@@ -591,3 +591,9 @@ def assemble(pid: str, payload: dict):
                      tdur=float(s.get("tdur") or 0.5), start=round(starts[k], 3)) for k, s in enumerate(segs)]
     return write_meta(d, segments=out_segs, clips=list(clips.values()), duration=round(probe(d / "play.mp4")["duration"], 3),
                       playUrl=f"/media/{pid}/play.mp4?v={v}", peaksUrl=f"/media/{pid}/peaks.json?v={v}")
+
+
+# Built frontend (Docker / Hugging Face Space). Mounted last so every /api route above wins.
+DIST = ROOT.parent / "dist"
+if DIST.exists():
+    app.mount("/", StaticFiles(directory=DIST, html=True), name="web")
