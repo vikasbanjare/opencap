@@ -7,7 +7,7 @@ COPY . .
 RUN bun run build
 
 FROM python:3.12-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg curl fonts-dejavu-core && rm -rf /var/lib/apt/lists/*
 RUN useradd -m -u 1000 user
 USER user
 # ponytail: "small" Whisper keeps transcription usable on the free 2-vCPU tier; set OPENCAP_WHISPER in Space settings for large-v3-turbo
@@ -20,6 +20,7 @@ RUN mkdir -p server/models && cd server/models && \
     curl -fsSLO https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx && \
     curl -fsSLO https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
 COPY --chown=user server/*.py server/
+COPY --chown=user server/studio server/studio
 COPY --from=web --chown=user /app/dist dist
 EXPOSE 7860
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7860", "--app-dir", "server"]

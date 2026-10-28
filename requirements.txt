@@ -5,3 +5,5 @@ faster-whisper
 kokoro-onnx
 soundfile
 sentencepiece
+pillow
+numpy

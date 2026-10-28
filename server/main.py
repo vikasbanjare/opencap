@@ -593,6 +593,18 @@ def assemble(pid: str, payload: dict):
                       playUrl=f"/media/{pid}/play.mp4?v={v}", peaksUrl=f"/media/{pid}/peaks.json?v={v}")
 
 
+# ---------- Studio: the Spark Station-style tool suite (server/studio) ----------
+
+def _studio_tts(text: str, voice: str, speed: float) -> Path:
+    r = tts({"text": text, "voice": voice, "speed": speed})
+    return DATA / r["url"].removeprefix("/media/")
+
+
+from studio.api import make_router  # noqa: E402
+
+app.include_router(make_router(DATA, transcribe=transcribe_wav, local_tts=_studio_tts))
+
+
 # Built frontend (Docker / Hugging Face Space). Mounted last so every /api route above wins.
 DIST = ROOT.parent / "dist"
 if DIST.exists():

@@ -31,6 +31,38 @@ A free, local, open-source take on Captions.ai / Kapwing / VEED: upload or recor
 
 See `docs/feature-map.md` for the competitor feature matrix and what is in / out of scope.
 
+## Studio: the full AI production suite
+
+The home page is **Studio**, an open rebuild of the Spark Station tool set (`docs/sparkstation-spec.md` lists every input and output it copies). There are 46 tools in 9 groups. Every tool is declared once in `server/studio/tools.py` (inputs, outputs, pipeline), and the web app renders its form from that.
+
+| Group | Tools |
+|---|---|
+| Pre-production | Story Builder (intent locks → outline → draft + production pack; Fountain/FDX/CSV/MD/JSON) · Script Doctor (score /100, 6 axes with cited lines, 16 dimensions, setup/payoff ledger, production footprint) · Storyboard Builder (shot list → style frame → 9-panel pages, PDF/PNG/CSV) · Budget Estimator (line items, take multipliers, 5 currencies) |
+| Casting & continuity | Casting Director (2/4/6/8 candidates, 20 styles, lock your pick) · Characters & Elements (identity, expression, wardrobe, location, prop locks; `@Name` in any prompt) · Expression sheet |
+| Image suite | Generation · Multi-Angles · Multi-Shots · Relight · Age Progression · Reimagine Scene · Skin Realism · Palette Studio · Background Change · Upscale · Inpaint (mask painter) · Face Swap · Virtual Try-On · Model Photoshoot · Draw to Paint (sketch canvas) · Color Grading (presets + sliders, local pixel maths) |
+| Video | Video Generation: start/end frame, reference clip, camera rig (body, lens, focal length, aperture), 24 camera moves, style presets, audio, multi-model take comparison |
+| Voice, music & sound | Voice (30 Gemini voices, 6 style presets, Kokoro offline) · Music (timestamped sections, vocals + lyrics, seed) · Sound Effects · Lip Sync |
+| Ad Factory | Micro Ad Factory (8-step agent pipeline, 9:16 + 16:9 together, end plate, QC with auto-retake below threshold) · Ecommerce Image Studio (23 scenarios) · Ecommerce Video Studio (14) · UGC Ads Studio (17 formats) · Video Batch Generation (CSV/Excel rows → queued ads + report) |
+| Post-production | Video Editor (the Pulse editor) · Subtitle Creator (rhythm, line length, sound-cue tags, profanity censoring, 38 languages, 12 styles; burned-in/soft-track MP4, ASS karaoke, SRT, VTT, TXT, JSON) |
+| Package & distribute | Video Intelligence (key frames → highlights → teaser/trailer/reel) · Thumbnail Creator (16 templates, all sizes at once) · Poster Creation (16 genre styles, 6 formats) · Adapt (16 image sizes, extend canvas or smart crop) · Video Reframe (14 ratios, auto subject placement) · Comics Generator (12 styles, editable panel plan, flipbook, PDF) · Visual Explainer (120+ commands) |
+| Prompt & quality | Prompt Assistant · Prompt Studio templates · Reverse Prompt Engineer · Quality Analyzer (5-axis score against the brief and locked characters) |
+
+Results can be sent from any tool to the next one (an image becomes the first frame of a video, a shot list becomes a storyboard, a plan becomes a render). Everything lands in the **Assets library** and per-tool **History**, and every model call is logged on **Usage & spend**.
+
+**Models are pluggable.** `server/studio/providers.py` routes each capability (text, vision, image, edit, video, TTS, music, SFX, upscale, face swap, try-on, inpaint, background removal, lip sync) to one of these providers:
+
+| Provider | Env var | Covers |
+|---|---|---|
+| fal.ai | `FAL_KEY` | Flux, Imagen 4, Seedream, Nano Banana, Kling, Veo 3, Seedance, Hailuo, upscalers, face swap, Kolors try-on, Flux Fill, BiRefNet, Stable Audio/Lyria, sync-lipsync |
+| OpenAI | `OPENAI_API_KEY` | GPT-5 text and vision, gpt-image-1 (generate, edit, inpaint), Sora 2, TTS |
+| Google | `GEMINI_API_KEY` | Gemini text and vision, Gemini image, Veo 3, Gemini TTS voices |
+| ElevenLabs | `ELEVENLABS_API_KEY` | voices, music, sound effects |
+| Replicate | `REPLICATE_API_TOKEN` | Flux, Kling, Real-ESRGAN, background removal |
+
+Keys can be set as environment variables or pasted under **Models & keys**, where you also pick the provider and model per capability. Keys pasted there are saved to `server/studio-settings.json`, which is outside the public `/media` folder and is gitignored; `OPENCAP_STUDIO_SETTINGS` moves it. **With no keys every tool still runs**, using a local `mock` provider that makes labelled placeholder images, video and audio, so the whole pipeline can be tried for free. These parts are always local and free: grading, crops, layouts, PDFs, reframing, subtitles (Whisper), Kokoro voice and all ffmpeg assembly.
+
+API: `GET /api/studio/tools` returns the catalogue. `POST /api/studio/tools/{id}/run` takes multipart fields and files and returns a job; poll `GET /api/studio/jobs/{id}`. The other routes are `/api/studio/assets`, `/characters`, `/settings` and `/usage`.
+
 ## Run it
 
 Requirements: macOS/Linux, Python 3.11+, [uv](https://docs.astral.sh/uv/), ffmpeg, bun (or npm), Chrome/Edge for export.
