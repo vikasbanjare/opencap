@@ -2,14 +2,16 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { studio, waitJob, type Asset, type Catalogue, type Character, type Field, type Job, type Output, type SettingsView, type Tool, type Usage } from './api'
 import { FieldInput, LibraryPicker, Preview, toFormData, visible, type MediaVal } from './Fields'
 import { Brand } from '../ui/Logo'
+import { CAT_HUE, THEMES, loadPrefs, savePrefs, themeVars, type ThemePrefs } from './themes'
+import { FilmStudio } from './FilmStudio'
 import './studio.css'
 
-type View = 'hub' | 'tool' | 'characters' | 'library' | 'usage' | 'settings'
+type View = 'hub' | 'tool' | 'characters' | 'library' | 'usage' | 'settings' | 'film'
 type Handoff = { tool: string; set: Record<string, unknown> }
 
 const MEDIA = ['image', 'images', 'video', 'audio', 'media']
 const accepts = (t: Tool, kind: string) => t.inputs.find(f => MEDIA.includes(f.type) && (f.type === 'media' || f.type === kind || (f.type === 'images' && kind === 'image')))
-const readUrl = () => { const q = new URLSearchParams(location.search); return { view: (q.get('studio') as View) || 'hub', tool: q.get('tool') } }
+const readUrl = () => { const q = new URLSearchParams(location.search); return { view: (q.get('studio') as View) || 'hub', tool: q.get('tool') || q.get('film') } }
 
 export function Studio({ onOpenEditor }: { onOpenEditor: () => void }) {
   const [cat, setCat] = useState<Catalogue | null>(null)
@@ -18,13 +20,16 @@ export function Studio({ onOpenEditor }: { onOpenEditor: () => void }) {
   const [chars, setChars] = useState<Character[]>([])
   const [handoff, setHandoff] = useState<Handoff | null>(null)
   const [nonce, setNonce] = useState(0) // remounts the tool form on each hand-off, not when the hand-off is consumed
+  const [prefs, setPrefsState] = useState<ThemePrefs>(loadPrefs)
+  const setPrefs = (p: ThemePrefs) => { setPrefsState(p); savePrefs(p) }
   const [lockDraft, setLockDraft] = useState<Partial<Character> & { refUrl?: string } | null>(null)
   const reloadChars = useCallback(() => studio.characters().then(setChars).catch(() => null), [])
   useEffect(() => { studio.catalogue().then(setCat).catch(e => setErr(`Studio server is not reachable (${e.message}).`)); reloadChars() }, [reloadChars])
   useEffect(() => { const f = () => setNav(readUrl()); addEventListener('popstate', f); return () => removeEventListener('popstate', f) }, [])
 
   const go = (v: View, t?: string | null) => {
-    const u = new URL(location.href); u.searchParams.set('studio', v); if (t) u.searchParams.set('tool', t); else u.searchParams.delete('tool')
+    const u = new URL(location.href); u.searchParams.set('studio', v); u.searchParams.delete('tool'); u.searchParams.delete('film')
+    if (t) u.searchParams.set(v === 'film' ? 'film' : 'tool', t)
     history.pushState(null, '', u); setNav({ view: v, tool: t ?? null }); scrollTo(0, 0)
   }
   const open = (t: Tool) => { if (t.link === 'editor') onOpenEditor(); else if (t.link === 'characters') go('characters'); else go('tool', t.id) }
@@ -33,14 +38,15 @@ export function Studio({ onOpenEditor }: { onOpenEditor: () => void }) {
 
   const current = cat?.tools.find(t => t.id === tool)
   return (
-    <div className="studio">
+    <div className="studio" style={themeVars(prefs) as React.CSSProperties}>
       <aside className="st-side">
         <div className="st-brand" onClick={() => go('hub')}><Brand size={22} /><span className="tag">Studio</span></div>
         <nav>
           <button className={view === 'hub' ? 'on' : ''} onClick={() => go('hub')}>🏠 Home</button>
+          <button className={view === 'film' ? 'on' : ''} onClick={() => go('film')}>🎬 Film Studio projects</button>
           {cat?.categories.map(c => (
             <details key={c.id} open={current?.category === c.id}>
-              <summary>{c.name}</summary>
+              <summary style={{ '--hue': CAT_HUE[c.id] } as React.CSSProperties}><span className="sw" />{c.name}</summary>
               {cat.tools.filter(t => t.category === c.id).map(t => (
                 <button key={t.id} className={t.id === tool && view === 'tool' ? 'on' : ''} onClick={() => open(t)}><span className="ic">{t.icon}</span>{t.name.replace('Resize & Repurpose · ', '')}</button>
               ))}
@@ -50,19 +56,25 @@ export function Studio({ onOpenEditor }: { onOpenEditor: () => void }) {
           <button className={view === 'characters' ? 'on' : ''} onClick={() => go('characters')}>🔒 Characters & Elements</button>
           <button className={view === 'library' ? 'on' : ''} onClick={() => go('library')}>🗃️ Assets library</button>
           <button className={view === 'usage' ? 'on' : ''} onClick={() => go('usage')}>📊 Usage & spend</button>
-          <button className={view === 'settings' ? 'on' : ''} onClick={() => go('settings')}>⚙️ Models & keys</button>
+          <button className={view === 'settings' ? 'on' : ''} onClick={() => go('settings')}>⚙️ Models, keys & theme</button>
         </nav>
+        <div className="theme-pick">
+          <span className="muted small">Theme · {THEMES.find(t => t.id === prefs.id)?.name}</span>
+          <div className="sws">{THEMES.map(t => <button key={t.id} title={t.name} className={`sw-btn ${prefs.id === t.id ? 'on' : ''}`}
+            style={{ '--a': t.bg, '--b': t.accent } as React.CSSProperties} onClick={() => setPrefs({ ...prefs, id: t.id, accent: undefined, accent2: undefined })} />)}</div>
+        </div>
       </aside>
       <main className="st-main">
         {err && <p className="notice">{err}</p>}
         {!cat ? <p className="muted">Loading…</p> :
           view === 'tool' && current ? <ToolPage key={`${current.id}:${nonce}`} tool={current} cat={cat} chars={chars}
             preset={handoff?.tool === current.id ? handoff.set : undefined} onSend={send} onLock={lock} onConsumed={() => setHandoff(null)} /> :
+          view === 'film' ? <FilmStudio filmId={tool} openFilm={id => go('film', id)} runStage={(t, id) => send({ tool: t, set: { film: id } })} /> :
           view === 'characters' ? <Characters chars={chars} reload={reloadChars} draft={lockDraft} clearDraft={() => setLockDraft(null)} /> :
           view === 'library' ? <Library cat={cat} onSend={send} /> :
           view === 'usage' ? <UsagePage /> :
-          view === 'settings' ? <SettingsPage /> :
-          <Hub cat={cat} open={open} />}
+          view === 'settings' ? <SettingsPage prefs={prefs} setPrefs={setPrefs} /> :
+          <Hub cat={cat} open={open} go={go} />}
       </main>
     </div>
   )
@@ -70,7 +82,7 @@ export function Studio({ onOpenEditor }: { onOpenEditor: () => void }) {
 
 // ---------- hub ----------
 
-function Hub({ cat, open }: { cat: Catalogue; open: (t: Tool) => void }) {
+function Hub({ cat, open, go }: { cat: Catalogue; open: (t: Tool) => void; go: (v: View, t?: string | null) => void }) {
   const [persona, setPersona] = useState<string | null>(null)
   const [recent, setRecent] = useState<Job[]>([])
   const [q, setQ] = useState('')
@@ -81,12 +93,19 @@ function Hub({ cat, open }: { cat: Catalogue; open: (t: Tool) => void }) {
     <div className="hub">
       <section className="st-hero">
         <span className="eyebrow">Your AI production crew</span>
-        <h1>Every role on set.<br />Played by one studio.</h1>
+        <h1>Every role on set.<br /><em>Played by one studio.</em></h1>
         <p>Script doctor, casting director, cinematographer, colourist, sound designer and ad director in one model-agnostic pipeline. Characters stay locked, every output can be QC'd, and context carries from tool to tool.</p>
         <div className="row">
-          <button className="primary" onClick={() => open(cat.tools.find(t => t.id === 'story_builder')!)}>Start with a story →</button>
+          <button className="primary" onClick={() => go('film')}>🎬 Make a film →</button>
+          <button onClick={() => open(cat.tools.find(t => t.id === 'story_builder')!)}>Start with a story</button>
           <button onClick={() => open(cat.tools.find(t => t.id === 'micro_ad_factory')!)}>Make an ad</button>
           <input className="search" placeholder={`Search ${cat.tools.length} tools…`} value={q} onChange={e => setQ(e.target.value)} />
+        </div>
+        <div className="hero-stats">
+          <div><strong>{cat.tools.length}</strong><span>tools</span></div>
+          <div><strong>{cat.categories.length}</strong><span>production stages</span></div>
+          <div><strong>5</strong><span>continuity locks</span></div>
+          <div><strong>5</strong><span>model providers, or none</span></div>
         </div>
       </section>
       <div className="personas">
@@ -108,8 +127,8 @@ function Hub({ cat, open }: { cat: Catalogue; open: (t: Tool) => void }) {
           <section key={c.id}>
             <div className="section-head"><h2>{c.name}</h2><span className="muted">{c.blurb}</span></div>
             <div className="tool-grid">{ts.map(t => (
-              <button key={t.id} className="tool-card" onClick={() => open(t)}>
-                <span className="big-ic">{t.icon}</span><strong>{t.name}</strong><span className="muted">{t.tagline}</span>
+              <button key={t.id} className="tool-card" style={{ '--hue': CAT_HUE[t.category] } as React.CSSProperties} onClick={() => open(t)}>
+                <span className="tile">{t.icon}</span><strong>{t.name}</strong><span className="muted">{t.tagline}</span>
               </button>
             ))}</div>
           </section>
@@ -122,7 +141,8 @@ function Hub({ cat, open }: { cat: Catalogue; open: (t: Tool) => void }) {
 // ---------- tool page ----------
 
 function ToolPage({ tool, cat, chars, preset, onSend, onLock, onConsumed }: { tool: Tool; cat: Catalogue; chars: Character[]; preset?: Record<string, unknown>; onSend: (h: Handoff) => void; onLock: (d: Partial<Character> & { refUrl?: string }) => void; onConsumed: () => void }) {
-  const [values, setValues] = useState<Record<string, unknown>>(() => preset ?? {})
+  // seed defaults so conditional fields (showIf) see the initial choice
+  const [values, setValues] = useState<Record<string, unknown>>(() => ({ ...Object.fromEntries(tool.inputs.filter(f => f.default !== undefined).map(f => [f.id, f.default])), ...preset }))
   const [job, setJob] = useState<Job | null>(null)
   const [history, setHistory] = useState<Job[]>([])
   const [busy, setBusy] = useState(false)
@@ -153,7 +173,7 @@ function ToolPage({ tool, cat, chars, preset, onSend, onLock, onConsumed }: { to
   return (
     <div className="tool-page">
       <header className="tool-head">
-        <span className="big-ic">{tool.icon}</span>
+        <span className="tile lg" style={{ '--hue': CAT_HUE[tool.category] } as React.CSSProperties}>{tool.icon}</span>
         <div><h1>{tool.name}</h1><p className="muted">{tool.description}</p></div>
       </header>
       <div className="tool-cols">
@@ -208,6 +228,7 @@ function JobView({ job, cat, onSend, onLock, onNext }: { job: Job; cat: Catalogu
     <div className="job">
       <div className="job-head">
         <span className={`st-dot s-${job.status}`} /><strong>{job.status === 'running' ? job.progress : job.status === 'error' ? 'Failed' : 'Done'}</strong>
+        {typeof job.params.film === 'string' && <a className="btn" href={`?studio=film&film=${job.params.film}`}>🎬 Open project</a>}
         {job.finished && <span className="muted small">{(job.finished - job.created).toFixed(0)} s</span>}
         <span className="muted small">{job.usage.length} model calls · ${usd.toFixed(2)}</span>
         {providers.includes('mock') && <span className="pill warn">placeholder outputs — add a key in Models & keys</span>}
@@ -297,7 +318,7 @@ function Characters({ chars, reload, draft, clearDraft }: { chars: Character[]; 
   }
   return (
     <div className="page">
-      <header className="tool-head"><span className="big-ic">🔒</span><div><h1>Characters & Elements</h1>
+      <header className="tool-head"><span className="tile lg">🔒</span><div><h1>Characters & Elements</h1>
         <p className="muted">Five continuity locks. Give each Element a name and reference images: a character (identity, expressions), wardrobe, location or prop. Select it in any tool, or type <code>@Name</code> in a prompt, and the references and description ride along on every generation.</p></div></header>
       <div className="row"><button className="primary" onClick={() => { setEdit({ role: 'Character' }); setExtra([]); setFiles([]) }}>+ New element</button></div>
       {edit && (
@@ -348,7 +369,7 @@ function Library({ cat, onSend }: { cat: Catalogue; onSend: (h: Handoff) => void
   useEffect(() => { load() }, [load])
   return (
     <div className="page">
-      <header className="tool-head"><span className="big-ic">🗃️</span><div><h1>Assets library</h1><p className="muted">Every upload and generation, across tools. Open one to send it to another tool.</p></div></header>
+      <header className="tool-head"><span className="tile lg">🗃️</span><div><h1>Assets library</h1><p className="muted">Every upload and generation, across tools. Open one to send it to another tool.</p></div></header>
       <div className="row">
         {['', 'image', 'video', 'audio', 'file'].map(k => <button key={k} className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{k || 'All'}</button>)}
         <span style={{ flex: 1 }} />
@@ -378,7 +399,7 @@ function UsagePage() {
   if (!u) return <p className="muted">Loading…</p>
   return (
     <div className="page">
-      <header className="tool-head"><span className="big-ic">📊</span><div><h1>Usage & spend</h1><p className="muted">Every model call, by provider, capability and tool. Costs are estimates from a static rate table; placeholder (mock) calls are free.</p></div></header>
+      <header className="tool-head"><span className="tile lg">📊</span><div><h1>Usage & spend</h1><p className="muted">Every model call, by provider, capability and tool. Costs are estimates from a static rate table; placeholder (mock) calls are free.</p></div></header>
       <div className="stats"><div className="stat"><span>Estimated spend</span><strong>${u.totalUsd.toFixed(2)}</strong></div><div className="stat"><span>Model calls</span><strong>{u.calls}</strong></div></div>
       <div className="usage-cols">
         {([['By provider', u.byProvider], ['By capability', u.byCap], ['By tool', u.byTool]] as const).map(([t, rows]) => (
@@ -391,7 +412,7 @@ function UsagePage() {
 
 // ---------- settings ----------
 
-function SettingsPage() {
+function SettingsPage({ prefs, setPrefs }: { prefs: ThemePrefs; setPrefs: (p: ThemePrefs) => void }) {
   const [s, setS] = useState<SettingsView | null>(null)
   const [keys, setKeys] = useState<Record<string, string>>({})
   const [saved, setSaved] = useState(false)
@@ -400,8 +421,23 @@ function SettingsPage() {
   const save = async (p: Parameters<typeof studio.saveSettings>[0]) => { setS(await studio.saveSettings(p)); setSaved(true); setTimeout(() => setSaved(false), 1500) }
   return (
     <div className="page">
-      <header className="tool-head"><span className="big-ic">⚙️</span><div><h1>Models & keys</h1>
+      <header className="tool-head"><span className="tile lg">⚙️</span><div><h1>Models, keys & theme</h1>
         <p className="muted">Studio is model-agnostic: each capability is routed to a provider. With no keys, every tool still runs with placeholder outputs so you can try the whole pipeline. Keys can also be set as environment variables on the server. Keys entered here are stored in the server's data folder.</p></div></header>
+      <div className="card">
+        <h4>Appearance</h4>
+        <div className="theme-grid">{THEMES.map(t => (
+          <button key={t.id} className={`theme-card ${prefs.id === t.id ? 'on' : ''}`} onClick={() => setPrefs({ ...prefs, id: t.id, accent: undefined, accent2: undefined })}>
+            <span className="prev" style={{ background: `linear-gradient(135deg, ${t.surface}, ${t.bg})`, border: `1px solid ${t.line}` }}><i style={{ background: t.accent }} /><i style={{ background: t.accent2 }} /><i style={{ background: t.fg }} /></span>
+            <strong>{t.name}</strong><span className="muted small">{t.dark ? 'Dark' : 'Light'}</span>
+          </button>))}</div>
+        <div className="row">
+          <label>Accent <input type="color" value={prefs.accent ?? THEMES.find(t => t.id === prefs.id)!.accent} onChange={e => setPrefs({ ...prefs, accent: e.target.value })} /></label>
+          <label>Second accent <input type="color" value={prefs.accent2 ?? THEMES.find(t => t.id === prefs.id)!.accent2} onChange={e => setPrefs({ ...prefs, accent2: e.target.value })} /></label>
+          <label>Corner radius <input type="range" min={0} max={22} value={prefs.radius ?? 12} onChange={e => setPrefs({ ...prefs, radius: +e.target.value })} /></label>
+          <button className="ghost" onClick={() => setPrefs({ id: prefs.id })}>Reset</button>
+        </div>
+        <p className="muted small">Saved in this browser. To change the built-in palettes, edit <code>src/studio/themes.ts</code>.</p>
+      </div>
       <div className="card">
         <h4>Providers {saved && <span className="pill ok">saved</span>}</h4>
         {s.providers.map(p => (

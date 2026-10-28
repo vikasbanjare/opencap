@@ -28,37 +28,40 @@ CAP_LABEL = {"llm": "Text & scripts", "vision": "Image/video understanding", "im
 COST = {"llm": 0.002, "vision": 0.004, "image": 0.04, "edit": 0.04, "video": 0.5, "tts": 0.01, "music": 0.05, "sfx": 0.02,
         "upscale": 0.02, "video_upscale": 0.2, "faceswap": 0.02, "tryon": 0.05, "inpaint": 0.04, "bg_remove": 0.01, "lipsync": 0.3}
 
-MODELS: dict[str, dict[str, list[str]]] = {
+MODELS: dict[str, dict[str, list[str]]] = {  # verified 2026-10-28, see docs/provider-contracts.md
     "fal": {
-        "image": ["fal-ai/flux/dev", "fal-ai/flux-pro/v1.1-ultra", "fal-ai/imagen4/preview", "fal-ai/bytedance/seedream/v4/text-to-image", "fal-ai/nano-banana"],
-        "edit": ["fal-ai/nano-banana/edit", "fal-ai/bytedance/seedream/v4/edit", "fal-ai/flux-pro/kontext"],
-        "video": ["fal-ai/kling-video/v2.1/master", "fal-ai/veo3", "fal-ai/bytedance/seedance/v1/pro", "fal-ai/minimax/hailuo-02/standard"],
+        "image": ["fal-ai/flux/dev", "fal-ai/nano-banana-2", "fal-ai/flux-pro/v1.1-ultra", "fal-ai/flux-2-pro", "fal-ai/bytedance/seedream/v4.5/text-to-image"],
+        "edit": ["fal-ai/nano-banana-2/edit", "fal-ai/bytedance/seedream/v4/edit", "fal-ai/flux-pro/kontext"],
+        "video": ["fal-ai/kling-video/v3/pro", "fal-ai/veo3.1", "fal-ai/veo3.1/fast", "bytedance/seedance-2.0", "fal-ai/bytedance/seedance/v1/pro", "fal-ai/minimax/hailuo-02/standard"],
         "tts": ["fal-ai/elevenlabs/tts/multilingual-v2"],
         "music": ["fal-ai/stable-audio", "fal-ai/lyria2"],
         "sfx": ["fal-ai/stable-audio"],
         "upscale": ["fal-ai/clarity-upscaler", "fal-ai/esrgan"],
         "video_upscale": ["fal-ai/video-upscaler"],
-        "faceswap": ["fal-ai/face-swap"],
+        "faceswap": ["easel-ai/advanced-face-swap"],
         "tryon": ["fal-ai/kling/v1-5/kolors-virtual-try-on"],
         "inpaint": ["fal-ai/flux-pro/v1/fill"],
         "bg_remove": ["fal-ai/birefnet"],
         "lipsync": ["fal-ai/sync-lipsync"],
     },
-    "openai": {"llm": ["gpt-5-mini", "gpt-5", "gpt-4.1"], "vision": ["gpt-5-mini", "gpt-4.1"], "image": ["gpt-image-1"],
-               "edit": ["gpt-image-1"], "inpaint": ["gpt-image-1"], "video": ["sora-2", "sora-2-pro"], "tts": ["gpt-4o-mini-tts"]},
-    "gemini": {"llm": ["gemini-2.5-flash", "gemini-2.5-pro"], "vision": ["gemini-2.5-flash"], "image": ["gemini-2.5-flash-image"],
-               "edit": ["gemini-2.5-flash-image"], "video": ["veo-3.0-generate-001", "veo-3.0-fast-generate-001"]},
-    "elevenlabs": {"tts": ["eleven_multilingual_v2", "eleven_turbo_v2_5"], "music": ["music_v1"], "sfx": ["eleven_text_to_sound_v2"]},
-    "replicate": {"image": ["black-forest-labs/flux-schnell", "black-forest-labs/flux-1.1-pro"], "video": ["kwaivgi/kling-v2.1", "minimax/video-01"],
-                  "upscale": ["nightmareai/real-esrgan"], "bg_remove": ["851-labs/background-remover"]},
+    # Sora / the Videos API was shut down 2026-09-24, so OpenAI has no video capability
+    "openai": {"llm": ["gpt-6-luna", "gpt-6.1-terra", "gpt-6.1-sol"], "vision": ["gpt-6.1-terra", "gpt-6-luna"],
+               "image": ["gpt-image-2.5-flare", "gpt-image-2.5-sunburst", "gpt-image-2"], "edit": ["gpt-image-2.5-sunburst", "gpt-image-2.5-flare", "gpt-image-2"],
+               "inpaint": ["gpt-image-2.5-sunburst", "gpt-image-2"], "tts": ["gpt-4o-mini-tts"]},
+    "gemini": {"llm": ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview"], "vision": ["gemini-3.8-flash"],
+               "image": ["gemini-3.1-flash-image", "gemini-3-pro-image"], "edit": ["gemini-3.1-flash-image", "gemini-3-pro-image"],
+               "video": ["gemini-omni-1.1-flash"], "tts": ["gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts"]},
+    "elevenlabs": {"tts": ["eleven_multilingual_v2", "eleven_v3", "eleven_flash_v2_5"], "music": ["music_v2_5", "music_v2", "music_v1"], "sfx": ["eleven_text_to_sound_v2"]},
+    "replicate": {"image": ["black-forest-labs/flux-schnell", "black-forest-labs/flux-1.1-pro"], "video": ["kwaivgi/kling-v3-video", "minimax/hailuo-2.3", "kwaivgi/kling-v2.1"],
+                  "upscale": ["nightmareai/real-esrgan"], "bg_remove": ["bria/remove-background", "recraft-ai/recraft-remove-background"]},
     "mock": {c: ["placeholder"] for c in CAPS},
 }
 KEY_ENV = {"fal": "FAL_KEY", "openai": "OPENAI_API_KEY", "gemini": "GEMINI_API_KEY", "elevenlabs": "ELEVENLABS_API_KEY", "replicate": "REPLICATE_API_TOKEN"}
 ORDER = ["fal", "openai", "gemini", "elevenlabs", "replicate"]
 # which provider is preferred per capability when several are configured
-PREFER = {"llm": ["openai", "gemini", "fal"], "vision": ["openai", "gemini"], "tts": ["elevenlabs", "openai", "fal"],
+PREFER = {"llm": ["openai", "gemini", "fal"], "vision": ["openai", "gemini"], "tts": ["elevenlabs", "gemini", "fal", "openai"],
           "music": ["elevenlabs", "fal"], "sfx": ["elevenlabs", "fal"], "image": ["fal", "openai", "gemini", "replicate"],
-          "edit": ["fal", "gemini", "openai"], "video": ["fal", "gemini", "openai", "replicate"]}
+          "edit": ["fal", "gemini", "openai"], "video": ["fal", "gemini", "replicate"]}
 
 
 class ProviderError(Exception):
@@ -279,6 +282,12 @@ class Router:
 
 
 # ---------- fal.ai (queue API) ----------
+# Each fal video family has its own duration enum and field names (docs/provider-contracts.md D4–D12).
+FAL_DUR = {"veo3": ([4, 6, 8], lambda s: f"{s}s"), "kling-video/v2": ([5, 10], str), "kling-video/v3": (list(range(3, 16)), str),
+           "kling-video/o3": (list(range(3, 16)), str), "seedance/v1": (list(range(2, 13)), str), "seedance-2": (list(range(4, 16)), str), "hailuo": ([6, 10], str)}
+FAL_NO_ASPECT = ("hailuo",)        # Hailuo takes no aspect_ratio
+FAL_I2V_NO_ASPECT = ("kling-video/",)  # Kling image-to-video follows the image
+
 
 class Fal:
     @staticmethod
@@ -290,10 +299,10 @@ class Fal:
             return sub
         for _ in range(900):
             st = http("GET", status_url, h)
-            if st.get("status") == "COMPLETED":
+            if st.get("status") == "COMPLETED":  # fal reports failures as COMPLETED + error
+                if st.get("error"):
+                    raise ProviderError(f"fal {model}: {st.get('error_type', '')} {st['error']}")
                 return http("GET", resp_url, h)
-            if st.get("status") in ("FAILED", "ERROR"):
-                raise ProviderError(f"fal {model}: {st}")
             time.sleep(2)
         raise ProviderError(f"fal {model}: timed out")
 
@@ -307,35 +316,60 @@ class Fal:
     @staticmethod
     def image(r, model, prompt, aspect, n, negative, seed):
         w, h = ASPECTS.get(aspect, (1024, 1024))
-        args = {"prompt": prompt, "num_images": n, "image_size": {"width": w, "height": h}, "aspect_ratio": aspect}
-        if negative: args["negative_prompt"] = negative
+        args = {"prompt": prompt, "num_images": max(1, min(4, int(n)))}
+        if any(k in model for k in ("flux/dev", "flux/schnell", "seedream", "flux-2")):
+            args["image_size"] = {"width": w, "height": h}
+        else:
+            args["aspect_ratio"] = aspect if aspect in ("21:9", "16:9", "4:3", "3:2", "1:1", "2:3", "3:4", "9:16") or "nano-banana" in model else "1:1"
+        if negative:
+            args["prompt"] += f"\nAvoid: {negative}"
         if seed is not None: args["seed"] = int(seed)
         return Fal._files(r, Fal._run(r, model, args), kinds=("images", "image"))
 
     @staticmethod
     def edit(r, model, prompt, refs, aspect, n):
         uris = [data_uri(p) for p in refs]
-        args = {"prompt": prompt, "image_urls": uris, "image_url": uris[0], "num_images": n, "aspect_ratio": aspect}
+        args = {"prompt": prompt, "num_images": max(1, min(4, int(n)))}
+        if "kontext" in model: args["image_url"] = uris[0]
+        else: args["image_urls"] = uris
+        if "nano-banana" in model: args["aspect_ratio"] = aspect
         return Fal._files(r, Fal._run(r, model, args), kinds=("images", "image"))
 
     @staticmethod
     def video(r, model, prompt, image, aspect, duration, end_image, audio):
-        args = {"prompt": prompt, "aspect_ratio": aspect, "duration": str(int(duration)) if "veo" not in model else f"{int(duration)}s"}
-        if "veo" in model: args["generate_audio"] = bool(audio)
+        m = model.rstrip("/")
+        allowed, fmt = next((v for k, v in FAL_DUR.items() if k in m), ([5], str))
+        args = {"prompt": prompt, "duration": fmt(min(allowed, key=lambda s: abs(s - duration)))}
+        if not any(k in m for k in FAL_NO_ASPECT) and not (image and any(k in m for k in FAL_I2V_NO_ASPECT)):
+            args["aspect_ratio"] = aspect if aspect in ("16:9", "9:16", "1:1", "21:9", "4:3", "3:4") else "16:9"
+            if "veo3" in m and args["aspect_ratio"] not in ("16:9", "9:16"):
+                args["aspect_ratio"] = "16:9"
+        if any(k in m for k in ("veo3", "kling-video/v3", "kling-video/o3", "seedance-2")):
+            args["generate_audio"] = bool(audio)
         if image:
-            args["image_url"] = data_uri(image); model = model.rstrip("/") + "/image-to-video"
-            if end_image: args["tail_image_url"] = args["end_image_url"] = data_uri(end_image)
-        elif "veo3" not in model:
-            model = model.rstrip("/") + "/text-to-video"
-        return Fal._files(r, Fal._run(r, model, args), ".mp4", kinds=("video",))
+            img = data_uri(image)
+            if "veo3.1" in m and end_image:
+                m += "/first-last-frame-to-video"; args["first_frame_url"] = img; args["last_frame_url"] = data_uri(end_image)
+            else:
+                m += "/image-to-video"
+                args["start_image_url" if any(k in m for k in ("kling-video/v3", "kling-video/o3")) else "image_url"] = img
+                if end_image and not any(k in m for k in ("veo3", "kling-video/v2")):
+                    args["end_image_url"] = data_uri(end_image)
+        elif "veo3" not in m:
+            m += "/text-to-video"
+        return Fal._files(r, Fal._run(r, m, args), ".mp4", kinds=("video",))
 
     @staticmethod
     def tts(r, model, text, voice, speed):
-        return Fal._files(r, Fal._run(r, model, {"text": text, "voice": voice or "Rachel", "speed": speed}), ".mp3", kinds=("audio",))
+        args = {"text": text, "speed": max(0.7, min(1.2, speed))}
+        if voice: args["voice"] = voice  # default voices are being retired; let the model pick when none is set
+        return Fal._files(r, Fal._run(r, model, args), ".mp3", kinds=("audio",))
 
     @staticmethod
     def music(r, model, prompt, duration):
-        return Fal._files(r, Fal._run(r, model, {"prompt": prompt, "seconds_total": int(duration), "duration": int(duration)}), kinds=("audio_file", "audio"))
+        args = {"prompt": prompt}
+        if "stable-audio" in model: args["seconds_total"] = max(1, min(47, int(duration)))
+        return Fal._files(r, Fal._run(r, model, args), kinds=("audio_file", "audio"))
 
     sfx = music
 
@@ -348,8 +382,9 @@ class Fal:
         return Fal._files(r, Fal._run(r, model, {"video_url": data_uri(video), "scale": scale}), ".mp4", kinds=("video",))
 
     @staticmethod
-    def faceswap(r, model, target, face):
-        return Fal._files(r, Fal._run(r, model, {"base_image_url": data_uri(target), "swap_image_url": data_uri(face)}), kinds=("image",))
+    def faceswap(r, model, target, face, gender="non-binary"):
+        args = {"face_image_0": data_uri(face), "gender_0": gender, "target_image": data_uri(target), "workflow_type": "target_hair", "upscale": True}
+        return Fal._files(r, Fal._run(r, model, args), kinds=("image",))
 
     @staticmethod
     def tryon(r, model, person, garment):
@@ -370,6 +405,9 @@ class Fal:
 
 # ---------- OpenAI ----------
 
+OPENAI_VOICES = {"alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse", "marin", "cedar"}
+
+
 class OpenAI:
     B = "https://api.openai.com/v1"
 
@@ -387,8 +425,9 @@ class OpenAI:
         return http("POST", f"{OpenAI.B}/chat/completions", OpenAI._h(r), body)["choices"][0]["message"]["content"]
 
     @staticmethod
-    def _size(aspect):
-        return "1536x1024" if aspect in ("16:9", "3:2", "4:3", "21:9") else "1024x1536" if aspect in ("9:16", "2:3", "3:4", "4:5") else "1024x1024"
+    def _size(aspect):  # GPT Image 2.x takes exact sizes (edges multiples of 16)
+        return {"16:9": "1536x864", "9:16": "864x1536", "1:1": "1024x1024", "4:5": "1024x1280", "3:4": "960x1280", "4:3": "1280x960",
+                "21:9": "1680x720", "2:3": "1024x1536", "3:2": "1536x1024"}.get(aspect, "auto")
 
     @staticmethod
     def image(r, model, prompt, aspect, n, negative, seed):
@@ -405,42 +444,39 @@ class OpenAI:
 
     @staticmethod
     def inpaint(r, model, image, mask, prompt):
-        # OpenAI masks are transparent where to paint; convert a white-on-black mask to that
+        # mask and image must share format and size; transparent = paint here
         from PIL import Image, ImageOps
-        m = ImageOps.invert(Image.open(mask).convert("L").resize(Image.open(image).size))
-        rgba = Image.open(image).convert("RGBA"); rgba.putalpha(m)
+        src_im = Image.open(image).convert("RGB"); src = r.out.path(".png"); src_im.save(src)
+        m = ImageOps.invert(Image.open(mask).convert("L").resize(src_im.size))
+        rgba = src_im.convert("RGBA"); rgba.putalpha(m)
         mp = r.out.path(".png"); rgba.save(mp)
-        return OpenAI.edit(r, model, prompt, [image], "1:1", 1, mask=mp)
-
-    @staticmethod
-    def video(r, model, prompt, image, aspect, duration, end_image, audio):
-        size = "720x1280" if aspect in ("9:16", "4:5", "3:4", "2:3") else "1280x720"
-        fields = {"model": model, "prompt": prompt, "seconds": str(min([4, 8, 12], key=lambda s: abs(s - duration))), "size": size}
-        body, ct = multipart(fields, {"input_reference": [image]} if image else {})
-        job = http("POST", f"{OpenAI.B}/videos", {**OpenAI._h(r), "Content-Type": ct}, body)
-        for _ in range(900):
-            job = http("GET", f"{OpenAI.B}/videos/{job['id']}", OpenAI._h(r))
-            if job.get("status") == "completed":
-                return [r.out.save(http("GET", f"{OpenAI.B}/videos/{job['id']}/content", OpenAI._h(r), raw=True), ".mp4")]
-            if job.get("status") == "failed":
-                raise ProviderError(f"sora: {job.get('error')}")
-            time.sleep(3)
-        raise ProviderError("sora: timed out")
+        return OpenAI.edit(r, model, prompt, [src], "auto", 1, mask=mp)
 
     @staticmethod
     def tts(r, model, text, voice, speed):
-        return [r.out.save(http("POST", f"{OpenAI.B}/audio/speech", OpenAI._h(r), {"model": model, "input": text, "voice": voice or "alloy", "speed": speed}, raw=True), ".mp3")]
+        v = voice.lower() if voice and voice.lower() in OPENAI_VOICES else "marin"
+        return [r.out.save(http("POST", f"{OpenAI.B}/audio/speech", OpenAI._h(r), {"model": model, "input": text, "voice": v, "speed": speed}, raw=True), ".mp3")]
 
 
-# ---------- Google Gemini / Veo ----------
+# ---------- Google Gemini (generateContent + Interactions) ----------
+
+GEMINI_VOICES = {"Zephyr", "Puck", "Charon", "Kore", "Fenrir", "Leda", "Orus", "Aoede", "Callirrhoe", "Autonoe", "Enceladus", "Iapetus", "Umbriel", "Algieba", "Despina",
+                 "Erinome", "Algenib", "Rasalgethi", "Laomedeia", "Achernar", "Alnilam", "Schedar", "Gacrux", "Pulcherrima", "Achird", "Zubenelgenubi", "Vindemiatrix",
+                 "Sadachbia", "Sadaltager", "Sulafat"}
+
 
 class Gemini:
     B = "https://generativelanguage.googleapis.com/v1beta"
 
     @staticmethod
-    def _gen(r, model, parts, cfg=None):
-        return http("POST", f"{Gemini.B}/models/{model}:generateContent?key={r.s.key('gemini')}", None,
-                    {"contents": [{"parts": parts}], **({"generationConfig": cfg} if cfg else {})})
+    def _h(r):
+        return {"x-goog-api-key": r.s.key("gemini")}
+
+    @staticmethod
+    def _gen(r, model, parts, cfg=None, system=""):
+        body = {"contents": [{"role": "user", "parts": parts}], **({"generationConfig": cfg} if cfg else {})}
+        if system: body["systemInstruction"] = {"parts": [{"text": system}]}
+        return http("POST", f"{Gemini.B}/models/{model}:generateContent", Gemini._h(r), body)
 
     @staticmethod
     def _inline(p: Path):
@@ -448,15 +484,17 @@ class Gemini:
 
     @staticmethod
     def llm(r, model, prompt, system, json_mode, images):
-        parts = ([{"text": system}] if system else []) + [{"text": prompt}] + [Gemini._inline(p) for p in images]
-        res = Gemini._gen(r, model, parts, {"responseMimeType": "application/json"} if json_mode else None)
+        parts = [{"text": prompt}] + [Gemini._inline(p) for p in images]
+        res = Gemini._gen(r, model, parts, {"responseMimeType": "application/json"} if json_mode else None, system)
         return "".join(p.get("text", "") for p in res["candidates"][0]["content"]["parts"])
 
     @staticmethod
     def edit(r, model, prompt, refs, aspect, n):
+        cfg = {"responseModalities": ["TEXT", "IMAGE"],
+               "imageConfig": {"aspectRatio": aspect if aspect in ("1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9") else "1:1"}}
         out = []
         for _ in range(n):
-            res = Gemini._gen(r, model, [{"text": f"{prompt}\nAspect ratio {aspect}."}] + [Gemini._inline(p) for p in refs], {"responseModalities": ["IMAGE", "TEXT"]})
+            res = Gemini._gen(r, model, [{"text": prompt}] + [Gemini._inline(p) for p in refs], cfg)
             for p in res["candidates"][0]["content"]["parts"]:
                 d = p.get("inline_data") or p.get("inlineData")
                 if d: out.append(r.out.save(base64.b64decode(d["data"]), ".png"))
@@ -469,20 +507,52 @@ class Gemini:
         return Gemini.edit(r, model, prompt + (f"\nAvoid: {negative}" if negative else ""), [], aspect, n)
 
     @staticmethod
+    def _interact(r, body, timeout_polls=900):
+        h = Gemini._h(r)
+        it = http("POST", f"{Gemini.B}/interactions", h, body)
+        for _ in range(timeout_polls):
+            if it.get("status") in (None, "completed", "failed", "cancelled", "incomplete"):
+                break
+            time.sleep(5); it = http("GET", f"{Gemini.B}/interactions/{it['id']}", h)
+        if it.get("status") not in (None, "completed"):
+            raise ProviderError(f"gemini: {it.get('status')} {json.dumps(it)[:300]}")
+        return it
+
+    @staticmethod
     def video(r, model, prompt, image, aspect, duration, end_image, audio):
-        inst = {"prompt": prompt}
-        if image:
-            inst["image"] = {"bytesBase64Encoded": base64.b64encode(image.read_bytes()).decode(), "mimeType": mimetypes.guess_type(image.name)[0] or "image/png"}
-        op = http("POST", f"{Gemini.B}/models/{model}:predictLongRunning?key={r.s.key('gemini')}", None,
-                  {"instances": [inst], "parameters": {"aspectRatio": "9:16" if aspect == "9:16" else "16:9"}})
-        for _ in range(900):
-            op = http("GET", f"{Gemini.B}/{op['name']}?key={r.s.key('gemini')}")
-            if op.get("done"):
-                if op.get("error"): raise ProviderError(f"veo: {op['error']}")
-                urls = first_url(op.get("response", {}))
-                return [r.out.fetch(u if "key=" in u else u + ("&" if "?" in u else "?") + f"key={r.s.key('gemini')}", ".mp4") for u in urls[:1]]
-            time.sleep(5)
-        raise ProviderError("veo: timed out")
+        """Gemini Omni on the Interactions API (Veo's predictLongRunning is retired)."""
+        parts = [{"type": "image", "data": base64.b64encode(p.read_bytes()).decode(), "mime_type": mimetypes.guess_type(p.name)[0] or "image/png"}
+                 for p in (image, end_image) if p]
+        text = prompt + (f" The clip is about {int(duration)} seconds long." if duration else "")
+        if not audio: text += " No dialogue, no music."
+        if image: text = ("<FIRST_FRAME> <LAST_FRAME> " if end_image else "<FIRST_FRAME> ") + text
+        parts.append({"type": "text", "text": text})
+        it = Gemini._interact(r, {"model": model, "input": parts, "background": True,
+                                  "response_format": {"type": "video", "aspect_ratio": "9:16" if aspect in ("9:16", "4:5", "3:4", "2:3") else "16:9", "delivery": "uri"}})
+        for step in it.get("steps", []):
+            if step.get("type") != "model_output": continue
+            for c in step.get("content", []):
+                if c.get("type") == "video":
+                    if c.get("data"): return [r.out.save(base64.b64decode(c["data"]), ".mp4")]
+                    if c.get("uri"):
+                        for _ in range(60):  # the file can take a moment to become downloadable
+                            try:
+                                return [r.out.fetch(c["uri"], ".mp4", headers=Gemini._h(r))]
+                            except urllib.error.HTTPError:
+                                time.sleep(3)
+        raise ProviderError("gemini omni returned no video")
+
+    @staticmethod
+    def tts(r, model, text, voice, speed):
+        style = "speaking slowly" if speed < 0.9 else "speaking quickly" if speed > 1.15 else "natural, clear"
+        it = Gemini._interact(r, {"model": model, "response_format": {"type": "audio"},
+                                  "input": [{"type": "user_input", "content": [{"type": "text", "text": text, "annotations": [{"type": "speech_metadata", "style": style}]}]}],
+                                  "generation_config": {"speech_config": [{"voice": voice if (voice in GEMINI_VOICES or str(voice).startswith("voice_")) else "Kore"}]}})
+        for step in it.get("steps", []):
+            for c in step.get("content", []):
+                if c.get("type") == "audio" and c.get("data"):
+                    return [r.out.save(base64.b64decode(c["data"]), ".wav")]
+        raise ProviderError("gemini tts returned no audio")
 
 
 # ---------- ElevenLabs ----------
@@ -495,27 +565,54 @@ class ElevenLabs:
         return {"xi-api-key": r.s.key("elevenlabs")}
 
     @staticmethod
+    def _voice(r, voice):
+        """A voice id, or a voice name looked up on the account (default voices are being retired)."""
+        if voice and len(voice) > 15:
+            return voice
+        vs = http("GET", "https://api.elevenlabs.io/v2/voices?page_size=100", ElevenLabs._h(r)).get("voices", [])
+        hit = next((v for v in vs if voice and v.get("name", "").lower() == voice.lower()), None) or (vs[0] if vs else None)
+        if not hit:
+            raise ProviderError("no ElevenLabs voices on this account; add one or pass a voice_id")
+        return hit["voice_id"]
+
+    @staticmethod
     def tts(r, model, text, voice, speed):
-        vid = voice if voice and len(voice) > 15 else "21m00Tcm4TlvDq8ikWAM"  # Rachel
-        return [r.out.save(http("POST", f"{ElevenLabs.B}/text-to-speech/{vid}", ElevenLabs._h(r),
-                                {"text": text, "model_id": model, "voice_settings": {"speed": speed}}, raw=True), ".mp3")]
+        return [r.out.save(http("POST", f"{ElevenLabs.B}/text-to-speech/{ElevenLabs._voice(r, voice)}", ElevenLabs._h(r),
+                                {"text": text, "model_id": model, "voice_settings": {"speed": max(0.7, min(1.2, speed))}}, raw=True), ".mp3")]
 
     @staticmethod
     def music(r, model, prompt, duration):
-        return [r.out.save(http("POST", f"{ElevenLabs.B}/music", ElevenLabs._h(r), {"prompt": prompt, "music_length_ms": int(duration * 1000)}, raw=True), ".mp3")]
+        return [r.out.save(http("POST", f"{ElevenLabs.B}/music", ElevenLabs._h(r),
+                                {"prompt": prompt, "model_id": model, "music_length_ms": max(3000, min(600000, int(duration * 1000)))}, raw=True), ".mp3")]
 
     @staticmethod
     def sfx(r, model, prompt, duration):
-        return [r.out.save(http("POST", f"{ElevenLabs.B}/sound-generation", ElevenLabs._h(r), {"text": prompt, "duration_seconds": min(22, duration)}, raw=True), ".mp3")]
+        return [r.out.save(http("POST", f"{ElevenLabs.B}/sound-generation", ElevenLabs._h(r),
+                                {"text": prompt, "model_id": model, "duration_seconds": max(0.5, min(30, float(duration)))}, raw=True), ".mp3")]
 
 
 # ---------- Replicate ----------
 
 class Replicate:
     @staticmethod
+    def _h(r):
+        return {"Authorization": f"Bearer {r.s.key('replicate')}"}
+
+    @staticmethod
+    def _file(r, p: Path) -> str:
+        """Data URI for small files, the Files API for big ones (Replicate recommends data URIs under 1 MB)."""
+        if p.stat().st_size < 900_000:
+            return data_uri(p)
+        body, ct = multipart({}, {"content": [p]})
+        return http("POST", "https://api.replicate.com/v1/files", {**Replicate._h(r), "Content-Type": ct}, body)["urls"]["get"]
+
+    @staticmethod
     def _run(r, model, inp):
-        h = {"Authorization": f"Bearer {r.s.key('replicate')}", "Prefer": "wait"}
-        p = http("POST", f"https://api.replicate.com/v1/models/{model}/predictions", h, {"input": inp})
+        h = {**Replicate._h(r), "Prefer": "wait"}
+        # official models run by name; community models need owner/name:version
+        url, body = (("https://api.replicate.com/v1/predictions", {"version": model.split(":", 1)[1], "input": inp}) if ":" in model
+                     else (f"https://api.replicate.com/v1/models/{model}/predictions", {"input": inp}))
+        p = http("POST", url, h, body)
         while p.get("status") not in ("succeeded", "failed", "canceled"):
             time.sleep(2); p = http("GET", p["urls"]["get"], h)
         if p["status"] != "succeeded":
@@ -524,19 +621,34 @@ class Replicate:
 
     @staticmethod
     def image(r, model, prompt, aspect, n, negative, seed):
-        return Replicate._run(r, model, {"prompt": prompt, "aspect_ratio": aspect, "num_outputs": n, **({"seed": int(seed)} if seed is not None else {})})
+        base = {"prompt": prompt + (f"\nAvoid: {negative}" if negative else ""), "aspect_ratio": aspect, **({"seed": int(seed)} if seed is not None else {})}
+        if "schnell" in model or "flux-dev" in model:
+            return Replicate._run(r, model, {**base, "num_outputs": max(1, min(4, int(n)))})
+        return [p for _ in range(int(n)) for p in Replicate._run(r, model, base)]
 
     @staticmethod
     def video(r, model, prompt, image, aspect, duration, end_image, audio):
-        return Replicate._run(r, model, {"prompt": prompt, "aspect_ratio": aspect, "duration": int(duration), **({"start_image": data_uri(image)} if image else {})})
+        if model.startswith("minimax/"):
+            inp = {"prompt": prompt, **({"first_frame_image": Replicate._file(r, image)} if image else {})}
+            if "hailuo" in model: inp["duration"] = 10 if duration > 8 else 6
+        else:  # kwaivgi/kling-*
+            v3 = "v3" in model
+            inp = {"prompt": prompt, "duration": max(3, min(15, int(duration))) if v3 else (10 if duration > 7 else 5)}
+            if image: inp["start_image"] = Replicate._file(r, image)
+            elif not v3: raise ProviderError("kling-v2.1 on Replicate needs a start image")
+            if end_image and v3: inp["end_image"] = Replicate._file(r, end_image)
+            if v3:
+                inp["generate_audio"] = bool(audio)
+                if not image: inp["aspect_ratio"] = aspect if aspect in ("16:9", "9:16", "1:1") else "16:9"
+        return Replicate._run(r, model, inp)
 
     @staticmethod
     def upscale(r, model, image, scale):
-        return Replicate._run(r, model, {"image": data_uri(image), "scale": scale})
+        return Replicate._run(r, model, {"image": Replicate._file(r, image), "scale": scale})
 
     @staticmethod
     def bg_remove(r, model, image):
-        return Replicate._run(r, model, {"image": data_uri(image)})
+        return Replicate._run(r, model, {"image": Replicate._file(r, image), **({"preserve_alpha": True} if model.startswith("bria/") else {})})
 
 
 # ---------- mock: placeholders so every tool runs without keys ----------

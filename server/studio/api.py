@@ -17,12 +17,13 @@ from fastapi import APIRouter, HTTPException, Request, UploadFile
 
 from .providers import Out, ProviderError, Router, Settings
 from . import tools as T
+from . import film  # noqa: F401  registers the Film Studio tools
 
 
 def make_router(DATA: Path, media_prefix: str = "/media", transcribe=None, local_tts=None) -> APIRouter:
     """transcribe(wav, language) -> {language, words}; local_tts(text, voice, speed) -> Path. Both optional (local models)."""
     S = DATA / "studio"
-    for sub in ("jobs", "files", "uploads", "characters"):
+    for sub in ("jobs", "files", "uploads", "characters", "films"):
         (S / sub).mkdir(parents=True, exist_ok=True)
     # API keys live outside DATA: everything under DATA is publicly served at /media
     settings = Settings(Path(os.environ.get("OPENCAP_STUDIO_SETTINGS", DATA.parent / "studio-settings.json")))
@@ -51,6 +52,36 @@ def make_router(DATA: Path, media_prefix: str = "/media", transcribe=None, local
         if not f.exists():
             raise HTTPException(404, "job not found")
         return json.loads(f.read_text())
+
+    class Store:
+        """Film projects and character locks, shared by the film tools."""
+        def film(self, fid: str) -> dict:
+            if not re.fullmatch(r"[a-f0-9]{12}", fid or ""):
+                raise T.ToolError("Pick a film project")
+            f = S / "films" / f"{fid}.json"
+            if not f.exists():
+                raise T.ToolError("Film project not found")
+            return json.loads(f.read_text())
+
+        def save_film(self, film: dict) -> dict:
+            film["updated"] = time.time()
+            with lock:
+                tmp = S / "films" / f".{film['id']}.tmp"; tmp.write_text(json.dumps(film, ensure_ascii=False)); tmp.replace(S / "films" / f"{film['id']}.json")
+            return film
+
+        def save_character(self, c: dict, refs: list[Path], front: bool = False) -> dict:
+            """Create or update a character; front=True makes the new refs its primary references (a re-cast)."""
+            cid = c.get("id") or uuid.uuid4().hex[:12]
+            d = S / "characters" / cid; d.mkdir(parents=True, exist_ok=True)
+            cur = json.loads((S / "characters" / f"{cid}.json").read_text()) if (S / "characters" / f"{cid}.json").exists() else {"id": cid, "created": time.time(), "refs": []}
+            for p in refs:
+                dst = d / f"{uuid.uuid4().hex[:6]}{p.suffix}"; shutil.copy(p, dst)
+                cur["refs"] = [url_of(dst)] + cur["refs"] if front else cur["refs"] + [url_of(dst)]
+            cur.update({k: v for k, v in c.items() if k not in ("refs", "id")}); cur["updated"] = time.time()
+            (S / "characters" / f"{cid}.json").write_text(json.dumps(cur, ensure_ascii=False))
+            return cur
+
+    store = Store()
 
     def characters() -> list[dict]:
         return [json.loads(f.read_text()) for f in sorted((S / "characters").glob("*.json"), key=lambda f: f.stat().st_mtime, reverse=True)]
@@ -99,7 +130,7 @@ def make_router(DATA: Path, media_prefix: str = "/media", transcribe=None, local
         def log(rec): job["usage"].append(rec); save_job(job)
         def progress(msg): job["progress"] = msg; save_job(job)
         ctx = T.Ctx(router=Router(settings, out, log), out=out, progress=progress, characters=characters, url_of=url_of, path_of=path_of, data=DATA,
-                  transcribe=transcribe, local_tts=local_tts)
+                  transcribe=transcribe, local_tts=local_tts, store=store)
         try:
             result = tool.fn(ctx, **params)
             job["outputs"] = T.normalize(result, url_of)
@@ -199,6 +230,38 @@ def make_router(DATA: Path, media_prefix: str = "/media", transcribe=None, local
             raise HTTPException(400, "bad id")
         (S / "characters" / f"{cid}.json").unlink(missing_ok=True)
         shutil.rmtree(S / "characters" / cid, ignore_errors=True)
+        return {"ok": True}
+
+    # ---------- film projects ----------
+
+    @api.get("/films")
+    def list_films():
+        return [json.loads(f.read_text()) for f in sorted((S / "films").glob("*.json"), key=lambda f: f.stat().st_mtime, reverse=True)]
+
+    @api.post("/films")
+    def create_film(payload: dict):
+        f = {"id": uuid.uuid4().hex[:12], "created": time.time(), "title": str(payload.get("title") or "Untitled film")[:120], "logline": str(payload.get("logline") or ""),
+             "genre": payload.get("genre") or "Drama", "aspect": payload.get("aspect") or "16:9", "style": payload.get("style") or "Cinematic realism",
+             "script": "", "scenes": [], "cast": [], "score": [], "final": None}
+        return store.save_film(f)
+
+    @api.get("/films/{fid}")
+    def get_film(fid: str):
+        try:
+            return store.film(fid)
+        except T.ToolError as e:
+            raise HTTPException(404, str(e))
+
+    @api.patch("/films/{fid}")
+    def patch_film(fid: str, payload: dict):
+        f = get_film(fid)
+        for k in ("title", "logline", "genre", "aspect", "style", "script", "scenes", "cast"):
+            if k in payload: f[k] = payload[k]
+        return store.save_film(f)
+
+    @api.delete("/films/{fid}")
+    def delete_film(fid: str):
+        get_film(fid); (S / "films" / f"{fid}.json").unlink()
         return {"ok": True}
 
     # ---------- settings & usage ----------

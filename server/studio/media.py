@@ -2,7 +2,7 @@
 No model calls here; everything is Pillow, numpy or ffmpeg."""
 from __future__ import annotations
 
-import json, math, subprocess
+import json, math, re, subprocess
 from pathlib import Path
 
 import numpy as np
@@ -48,37 +48,46 @@ def wrap(d: ImageDraw.ImageDraw, text: str, f, width: int) -> list[str]:
 
 # ---------- colour grading (pixel maths) ----------
 
-GRADE_PRESETS = {
+GRADE_PRESETS = {  # see docs/tool-research.md §13
     "None": {},
     "Natural": {"contrast": 5, "saturation": 5},
-    "Cinematic": {"contrast": 18, "saturation": -8, "split": 35, "temp": 4, "bloom": 15},
+    "Cinematic": {"contrast": 18, "saturation": -8, "split": 35, "temp": 4, "bloom": 15, "skin_protect": 1},
+    "Teal & Orange": {"split": 60, "contrast": 15, "saturation": 5, "skin_protect": 1},
+    "Bleach Bypass": {"bypass": 60, "contrast": 30, "saturation": -45, "grain": 20},
     "B&W Film": {"saturation": -100, "contrast": 25, "grain": 35},
-    "Split Tone": {"split": 60},
+    "Split Tone": {"split": 60, "skin_protect": 1},
     "Soft Skin": {"soften": 35, "temp": 6, "contrast": -5},
-    "16mm Film": {"grain": 55, "halation": 35, "contrast": 10, "saturation": -10, "temp": 8},
+    "16mm Film": {"grain": 55, "grain_size": 2, "halation": 35, "contrast": 10, "saturation": -10, "temp": 8, "soften": 15, "vignette": 20, "lift": 3},
     "Old Lens": {"bloom": 40, "vignette": 45, "soften": 20, "contrast": -8},
-    "Teal & Orange": {"split": 70, "contrast": 12, "saturation": 10},
     "Noir": {"saturation": -100, "contrast": 45, "vignette": 50, "exposure": -0.3},
-    "Pastel": {"contrast": -18, "saturation": -25, "exposure": 0.3, "temp": 3},
+    "Pastel": {"contrast": -18, "saturation": -25, "exposure": 0.3, "temp": 3, "lift": 4},
     "Warm": {"temp": 25, "saturation": 5},
-    "Vintage": {"temp": 18, "contrast": -10, "saturation": -20, "grain": 25, "vignette": 25},
+    "Vintage": {"temp": 18, "contrast": -10, "saturation": -20, "grain": 25, "vignette": 25, "lift": 5},
 }
 
 
-def grade(im: Image.Image, temp=0.0, hue=0.0, saturation=0.0, contrast=0.0, split=0.0, exposure=0.0,
-          soften=0.0, bloom=0.0, halation=0.0, grain=0.0, vignette=0.0) -> Image.Image:
-    """Sliders are -100..100 (exposure in stops, -2..2); effects are 0..100."""
-    a = np.asarray(im.convert("RGB")).astype(np.float32) / 255
+def grade(im: Image.Image, temp=0.0, hue=0.0, saturation=0.0, contrast=0.0, split=0.0, exposure=0.0, soften=0.0, bloom=0.0, halation=0.0,
+          grain=0.0, vignette=0.0, skin_protect=0.0, bypass=0.0, grain_size=1.0, lift=0.0) -> Image.Image:
+    """Sliders are -100..100 (exposure in stops); effects are 0..100. Order: soften, exposure, white balance, split tone
+    (skin-protected), saturation, hue, contrast, bleach bypass, lift, bloom, halation, vignette, grain last."""
+    src = im.convert("RGB"); a = np.asarray(src).astype(np.float32) / 255
+    H, W = a.shape[:2]
     if soften:
-        b = np.asarray(im.convert("RGB").filter(ImageFilter.GaussianBlur(2 + soften / 20))).astype(np.float32) / 255
+        b = np.asarray(src.filter(ImageFilter.GaussianBlur(2 + soften / 20))).astype(np.float32) / 255
         a = a * (1 - soften / 160) + b * (soften / 160)
     a = a * (2 ** exposure)
     if temp:
         a[..., 0] *= 1 + temp / 300; a[..., 2] *= 1 - temp / 300
     lum = (a * [0.299, 0.587, 0.114]).sum(-1, keepdims=True)
-    if split:  # teal shadows, warm highlights
+    skin = 0.0
+    if skin_protect:  # hue ~10-50°, moderate saturation: the vectorscope skin line
+        hsv = np.asarray(Image.fromarray((np.clip(a, 0, 1) * 255).astype(np.uint8)).convert("HSV")).astype(np.float32)
+        hdeg = hsv[..., 0] * 360 / 255; sat = hsv[..., 1] / 255
+        skin = (np.clip(1 - np.abs(hdeg - 28) / 22, 0, 1) * np.clip((sat - 0.12) / 0.15, 0, 1) * np.clip((0.75 - sat) / 0.15, 0, 1))[..., None]
+    if split:  # shadows toward teal (~185°), highlights toward orange (~30°)
         k = split / 100
-        a += k * 0.08 * ((1 - lum) * np.array([-0.6, 0.15, 0.6]) + lum * np.array([0.6, 0.15, -0.6]))
+        shift = k * 0.09 * ((1 - lum) * np.array([-0.55, 0.12, 0.45]) + lum * np.array([0.5, 0.15, -0.45]))
+        a += shift * (1 - skin * 0.85) if skin_protect else shift
     if saturation:
         a = lum + (a - lum) * (1 + saturation / 100)
     if hue:
@@ -87,17 +96,30 @@ def grade(im: Image.Image, temp=0.0, hue=0.0, saturation=0.0, contrast=0.0, spli
         a = np.asarray(Image.fromarray(hsv.astype(np.uint8), "HSV").convert("RGB")).astype(np.float32) / 255
     if contrast:
         a = (a - 0.5) * (1 + contrast / 100) + 0.5
-    if bloom or halation:
+    if bypass:  # skip-bleach: a contrasty greyscale copy laid over the colour in overlay
+        g = np.clip((((a * [0.299, 0.587, 0.114]).sum(-1, keepdims=True)) - 0.5) * 1.4 + 0.5, 0, 1)
+        over = np.where(a < 0.5, 2 * a * g, 1 - 2 * (1 - a) * (1 - g))
+        a = a * (1 - bypass / 100) + over * (bypass / 100)
+    if lift:
+        a = a * (1 - lift / 100) + lift / 100
+    if bloom:  # neutral glow
         hi = np.clip((a - 0.7) / 0.3, 0, 1)
-        blur = np.asarray(Image.fromarray((hi * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(max(a.shape[:2]) / 60))).astype(np.float32) / 255
+        blur = np.asarray(Image.fromarray((hi * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(max(H, W) / 60))).astype(np.float32) / 255
         a += blur * (bloom / 100) * 0.6
-        a[..., 0] += blur[..., 0] * (halation / 100) * 0.7; a[..., 1] += blur[..., 1] * (halation / 100) * 0.15
+    if halation:  # red-orange glow around bright edges, screen-blended (film's red layer re-exposed)
+        l2 = (np.clip(a, 0, 1) * [0.299, 0.587, 0.114]).sum(-1)
+        hi = np.clip((l2 - 0.8) / 0.2, 0, 1)
+        blur = np.asarray(Image.fromarray((hi * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(W * 0.01))).astype(np.float32)[..., None] / 255
+        glow = blur * np.array([1.0, 0.35, 0.05]) * (halation / 100) * 0.9
+        a = 1 - (1 - np.clip(a, 0, 1)) * (1 - glow)
     if vignette:
-        h, w = a.shape[:2]; y, x = np.ogrid[:h, :w]
-        r = np.sqrt(((x - w / 2) / (w / 2)) ** 2 + ((y - h / 2) / (h / 2)) ** 2)
+        y, x = np.ogrid[:H, :W]
+        r = np.sqrt(((x - W / 2) / (W / 2)) ** 2 + ((y - H / 2) / (H / 2)) ** 2)
         a *= (1 - np.clip(r - 0.4, 0, 1) * (vignette / 100))[..., None]
-    if grain:
-        a += np.random.default_rng(7).normal(0, grain / 100 * 0.06, a.shape[:2])[..., None]
+    if grain:  # last; coarser for smaller film formats
+        gs = max(1, int(round(grain_size * max(1, W / 1920))))
+        n = np.random.default_rng(7).normal(0, grain / 100 * 0.06, (H // gs + 1, W // gs + 1))
+        a += np.kron(n, np.ones((gs, gs)))[:H, :W][..., None]
     return Image.fromarray((np.clip(a, 0, 1) * 255).astype(np.uint8))
 
 
@@ -150,7 +172,7 @@ def overlay_title(im: Image.Image, title: str, sub: str = "", where: str = "bott
     f = font(max(24, int(min(W, H) * (0.11 if len(title) < 18 else 0.07)))); fs = font(max(14, int(min(W, H) * 0.035)), bold=False)
     lines = wrap(d, title.upper(), f, int(W * 0.88)); lh = f.size * 1.08
     block = lh * len(lines) + (fs.size * 1.8 if sub else 0)
-    y = H * 0.08 if where == "top" else H - block - H * 0.07
+    y = H * 0.08 if where == "top" else (H - block) / 2 if where == "center" else H - block - H * 0.07
     d.rectangle([0, y - H * 0.04, W, y + block + H * 0.04], fill=(0, 0, 0, 110))
     for ln in lines:
         x = (W - d.textlength(ln, font=f)) / 2
@@ -160,18 +182,32 @@ def overlay_title(im: Image.Image, title: str, sub: str = "", where: str = "bott
     return im
 
 
-def end_plate(size: tuple[int, int], product: str, price: str, caption: str, cta: str, image: Image.Image | None = None, accent="#C6F24E") -> Image.Image:
+def billing_block(im: Image.Image, text: str) -> Image.Image:
+    """Credits block: condensed caps, ~90% width, bottom 6% of a portrait poster."""
+    im = im.convert("RGB"); d = ImageDraw.Draw(im); W, H = im.size
+    size = max(10, int(H * 0.012)); f = font(size, bold=False)
+    lines = wrap(d, text.upper().replace(" · ", "   "), f, int(W * 0.9))[:4]
+    y = H - (len(lines) + 1) * size * 1.25
+    for ln in lines:
+        d.text(((W - d.textlength(ln, font=f)) / 2, y), ln, font=f, fill=(225, 225, 225)); y += size * 1.25
+    return im
+
+
+def end_plate(size: tuple[int, int], product: str, price: str, caption: str, cta: str, image: Image.Image | None = None, accent="#C6F24E",
+              safe: tuple[float, float, float] = (0.05, 0.08, 0.05)) -> Image.Image:
+    """End card laid out inside the platform safe zone (top, bottom, side fractions)."""
     W, H = size; im = Image.new("RGB", size, (14, 14, 18)); d = ImageDraw.Draw(im)
+    top, bot, side = int(H * safe[0]), int(H * (1 - safe[1])), int(W * safe[2]); area = bot - top; inner = W - 2 * side
     if image:
-        p = ImageOps.contain(image.convert("RGBA"), (int(W * 0.6), int(H * 0.45))); im.paste(p, ((W - p.width) // 2, int(H * 0.08)), p)
-    y = H * 0.58; big, mid = font(int(min(W, H) * 0.08)), font(int(min(W, H) * 0.045), bold=False)
+        p = ImageOps.contain(image.convert("RGBA"), (int(inner * 0.7), int(area * 0.42))); im.paste(p, ((W - p.width) // 2, top + int(area * 0.04)), p)
+    y = top + area * 0.5; big, mid = font(int(min(W, H) * 0.075)), font(int(min(W, H) * 0.042), bold=False)
     for t, f, c in ((product, big, "white"), (price, big, accent), (caption, mid, (200, 200, 210))):
         if not t: continue
-        for ln in wrap(d, t, f, int(W * 0.86)):
+        for ln in wrap(d, t, f, int(inner * 0.95)):
             d.text(((W - d.textlength(ln, font=f)) / 2, y), ln, font=f, fill=c); y += f.size * 1.2
     if cta:
         f = font(int(min(W, H) * 0.05)); tw = d.textlength(cta, font=f)
-        x0, y0 = (W - tw) / 2 - 30, H * 0.86
+        y0 = min(bot - f.size - 40, y + f.size * 0.6); x0 = (W - tw) / 2 - 30
         d.rounded_rectangle([x0, y0, x0 + tw + 60, y0 + f.size + 30], 40, fill=accent); d.text((x0 + 30, y0 + 13), cta, font=f, fill=(20, 24, 10))
     return im
 
@@ -235,6 +271,29 @@ def frames(video: Path, out_dir: Path, every: float = 1.0, width: int = 640, lim
     return [((i) * every, p) for i, p in enumerate(sorted(out_dir.glob("f*.jpg")))]
 
 
+def audio_energy(video: Path, step: float = 0.5) -> list[float]:
+    """RMS loudness per `step` seconds (0 when there is no audio)."""
+    if not probe(video)["hasAudio"]:
+        return []
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-i", str(video), "-vn", "-ac", "1", "-ar", "8000", "-f", "s16le", "-"], capture_output=True).stdout
+    a = np.frombuffer(raw[: len(raw) // 2 * 2], dtype=np.int16).astype(np.float32) / 32768
+    n = int(8000 * step)
+    return [float(np.sqrt(np.mean(a[i:i + n] ** 2))) for i in range(0, len(a), n)] if len(a) else []
+
+
+def scene_cuts(video: Path, threshold: float = 0.3) -> list[float]:
+    """Shot boundaries (seconds) from ffmpeg's scene-change score."""
+    r = subprocess.run(["ffmpeg", "-v", "info", "-i", str(video), "-vf", f"scale=320:-2,select='gt(scene,{threshold})',showinfo", "-an", "-f", "null", "-"],
+                       capture_output=True, text=True, timeout=1800)
+    return [float(x) for x in re.findall(r"pts_time:([\d.]+)", r.stderr)]
+
+
+def zs(xs: list[float]) -> list[float]:
+    if not xs: return []
+    mu = sum(xs) / len(xs); sd = (sum((x - mu) ** 2 for x in xs) / len(xs)) ** 0.5 or 1
+    return [(x - mu) / sd for x in xs]
+
+
 def frame_at(video: Path, t: float, out: Path) -> Path:
     sh(["ffmpeg", "-v", "error", "-y", "-ss", f"{max(0, t):.3f}", "-i", str(video), "-frames:v", "1", "-q:v", "2", str(out)])
     return out
@@ -288,8 +347,17 @@ def mix(video: Path, out: Path, voice: Path | None = None, music: Path | None = 
         ins += ["-i", str(voice)]; parts.append(f"[{k}:a]volume=1.4,apad[vo]"); labels.append("[vo]"); k += 1
     if music:
         ins += ["-stream_loop", "-1", "-i", str(music)]; parts.append(f"[{k}:a]volume={10 ** (music_db / 20):.3f}[mu]"); labels.append("[mu]")
+    if voice and music:  # duck the music bed under the voice-over
+        parts[-1] = parts[-1].replace("[mu]", "[mu0]"); parts[1] = parts[1].replace("[vo]", "[vo0]")
+        parts += ["[vo0]asplit=2[vo][vsc]", "[mu0][vsc]sidechaincompress=threshold=0.03:ratio=8:attack=20:release=300[mu]"]
     fc = ";".join(parts) + ";" + "".join(labels) + f"amix=inputs={len(labels)}:duration=first:normalize=0[a]"
     sh(["ffmpeg", "-v", "error", "-y", *ins, "-filter_complex", fc, "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-shortest", str(out)])
+    return out
+
+
+def loudnorm(video: Path, out: Path, target: float = -14.0) -> Path:
+    """Normalise to a platform loudness target (-14 LUFS social, -23 broadcast, -27 dialogue-gated streaming), true peak -1.5 dBTP."""
+    sh(["ffmpeg", "-v", "error", "-y", "-i", str(video), "-af", f"loudnorm=I={target}:TP=-1.5:LRA=11", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(out)])
     return out
 
 

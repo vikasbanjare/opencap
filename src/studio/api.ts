@@ -1,7 +1,7 @@
 // Studio API client. Tools are declared on the server; the web app renders their forms from this schema.
 
 export type FieldType = 'text' | 'textarea' | 'select' | 'chips' | 'number' | 'slider' | 'toggle' | 'color'
-  | 'image' | 'images' | 'video' | 'audio' | 'media' | 'character' | 'characters' | 'mask' | 'sketch'
+  | 'image' | 'images' | 'video' | 'audio' | 'media' | 'character' | 'characters' | 'mask' | 'sketch' | 'film'
 
 export type Field = {
   id: string; label: string; type: FieldType
@@ -27,6 +27,10 @@ export type Job = {
 }
 
 export type Character = { id: string; name: string; description?: string; wardrobe?: string; voice?: string; role?: string; personality?: string; refs: string[] }
+export type Scene = { n: number; heading: string; action: string; dialogue: { character: string; line: string; paren?: string }[]; shots?: { shot: string; description: string; camera?: string; frame?: string }[]; cut?: string; score?: string; sfx?: string; duration?: number }
+export type Film = { id: string; title: string; logline: string; genre: string; aspect: string; style: string; script: string; scenes: Scene[]
+  cast: { name: string; characterId: string; voice: string; description: string; wardrobe: string; ref: string }[]; score: { scene: number | 'all'; url: string; prompt: string }[]
+  final: { url: string; srt: string; duration: number } | null; updated?: number }
 export type Asset = Output & { job?: string; tool: string; toolName?: string; created: number }
 export type Persona = { id: string; name: string; icon: string; pitch: string; tools: string[] }
 export type Catalogue = { categories: { id: string; name: string; blurb: string }[]; tools: Tool[]; personas: Persona[] }
@@ -56,6 +60,11 @@ export const studio = {
   settings: () => fetch(`${B}/settings`).then(j<SettingsView>),
   saveSettings: (p: { keys?: Record<string, string | null>; routes?: Record<string, { provider: string; model?: string }> }) =>
     fetch(`${B}/settings`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(p) }).then(j<SettingsView>),
+  films: () => fetch(`${B}/films`).then(j<Film[]>),
+  film: (id: string) => fetch(`${B}/films/${id}`).then(j<Film>),
+  createFilm: (p: Partial<Film>) => fetch(`${B}/films`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(p) }).then(j<Film>),
+  updateFilm: (id: string, p: Partial<Film>) => fetch(`${B}/films/${id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(p) }).then(j<Film>),
+  deleteFilm: (id: string) => fetch(`${B}/films/${id}`, { method: 'DELETE' }).then(j),
   usage: () => fetch(`${B}/usage`).then(j<Usage>),
 }
 

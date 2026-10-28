@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { studio, type Asset, type Character, type Field } from './api'
+import { studio, type Asset, type Character, type Field, type Film } from './api'
 
 export type Val = string | number | boolean | string[] | File | File[] | null | undefined
 export type MediaVal = { file?: File; url?: string; preview: string; name: string }
@@ -43,6 +43,8 @@ export function FieldInput({ f, value, onChange, characters, values }: { f: Fiel
     }
     case 'image': case 'images': case 'video': case 'audio': case 'media':
       return <MediaInput f={f} value={value as MediaVal[] | undefined} onChange={onChange} />
+    case 'film':
+      return <FilmSelect value={String(v)} onChange={onChange} />
     case 'mask': {
       const img = (values.image as MediaVal[] | undefined)?.[0]
       return img ? <Painter key={img.preview} mode="mask" bg={img.preview} onChange={b => onChange(b ? [{ file: new File([b], 'mask.png', { type: 'image/png' }), preview: '', name: 'mask.png' }] : undefined)} />
@@ -202,4 +204,13 @@ export function Painter({ mode, bg, size, onChange }: { mode: 'mask' | 'sketch';
       </div>
     </div>
   )
+}
+
+function FilmSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [films, setFilms] = useState<Film[]>([])
+  useEffect(() => { studio.films().then(fs => { setFilms(fs); if (!value && fs[0]) onChange(fs[0].id) }).catch(() => null) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const create = async () => { const t = prompt('Film title'); if (!t) return; const f = await studio.createFilm({ title: t }); setFilms([f, ...films]); onChange(f.id) }
+  return <div className="row" style={{ margin: 0 }}>
+    <select value={value} onChange={e => onChange(e.target.value)} style={{ flex: 1 }}>{!films.length && <option value="">No films yet</option>}{films.map(f => <option key={f.id} value={f.id}>{f.title}</option>)}</select>
+    <button type="button" onClick={create}>+ New</button></div>
 }
