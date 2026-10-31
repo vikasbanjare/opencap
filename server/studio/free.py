@@ -102,16 +102,31 @@ def keep(r, src: str, ext: str | None = None) -> Path:
 
 # ---------- background removal on CPU (BiRefNet lite, MIT): no GPU quota at all ----------
 
-_bg = {"sess": None}
+_bg = {"sess": None, "pool": None}
+_bg_lock = threading.Lock()
 
 
-def bg_remove_cpu(src: Path, dst: Path) -> Path:
+def bg_remove_cpu(src: Path, dst: Path, timeout: float = 90) -> Path:
+    """One image at a time on a single worker; raises TimeoutError if the CPU is too slow, so the caller can fall back."""
+    from concurrent.futures import ThreadPoolExecutor
+    with _bg_lock:
+        _bg["pool"] = _bg["pool"] or ThreadPoolExecutor(1)
+    return _bg["pool"].submit(_bg_remove_cpu, src, dst).result(timeout=timeout)
+
+
+def _bg_remove_cpu(src: Path, dst: Path) -> Path:
     import numpy as np
     from PIL import Image
     if _bg["sess"] is None:
         import onnxruntime as ort
         from huggingface_hub import hf_hub_download
-        _bg["sess"] = ort.InferenceSession(hf_hub_download("onnx-community/BiRefNet_lite-ONNX", "onnx/model.onnx"), providers=["CPUExecutionProvider"])
+        so = ort.SessionOptions()
+        try:
+            cpus = len(os.sched_getaffinity(0))
+        except Exception:
+            cpus = os.cpu_count() or 2
+        so.intra_op_num_threads = max(1, min(4, cpus)); so.inter_op_num_threads = 1  # containers report the host's cores
+        _bg["sess"] = ort.InferenceSession(hf_hub_download("onnx-community/BiRefNet_lite-ONNX", "onnx/model.onnx"), so, providers=["CPUExecutionProvider"])
     im = Image.open(src).convert("RGB")
     x = (np.asarray(im.resize((1024, 1024)), dtype=np.float32) / 255 - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
     y = _bg["sess"].run(None, {"input_image": x.transpose(2, 0, 1)[None].astype(np.float32)})[0][0, 0]
