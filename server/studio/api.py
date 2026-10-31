@@ -133,6 +133,8 @@ def make_router(DATA: Path, media_prefix: str = "/media", transcribe=None, local
                   transcribe=transcribe, local_tts=local_tts, store=store)
         try:
             result = tool.fn(ctx, **params)
+            if ctx.router.notes:
+                result = [T.T("\n\n".join(ctx.router.notes), "Note")] + (list(result) if isinstance(result, (list, tuple)) else [result])
             job["outputs"] = T.normalize(result, url_of)
             job["status"], job["progress"] = "done", "Done"
         except (ProviderError, T.ToolError) as e:

@@ -222,6 +222,11 @@ class Router:
 
     def __init__(self, settings: Settings, out: Out, log: Callable[[dict], None]):
         self.s, self.out, self.log = settings, out, log
+        self.notes: list[str] = []  # fallbacks the user should know about; shown as a note on the job
+
+    def _free_route(self, cap, kw) -> bool:
+        p = kw.get("provider")
+        return (p in (None, "", "auto") and self.s.route(cap)[0] in FREE_PROVIDERS) or p in FREE_PROVIDERS
 
     def _call(self, cap: str, fn_name: str, *a, provider: str | None = None, model: str | None = None, **kw):
         prov, mdl = self.s.route(cap)
@@ -279,7 +284,22 @@ class Router:
         return self._call("image", "image", prompt, aspect, n, negative, seed, **kw)
 
     def video(self, prompt, image: Path | None = None, aspect="16:9", duration=5, end_image: Path | None = None, audio=False, **kw) -> list[Path]:
-        return self._call("video", "video", prompt, image, aspect, duration, end_image, audio, **kw)
+        try:
+            return self._call("video", "video", prompt, image, aspect, duration, end_image, audio, **kw)
+        except ProviderError as e:
+            if not self._free_route("video", kw):
+                raise
+            # free video quota used up: a slow push-in on the start frame keeps the tool and the pipeline working
+            frame = image or self.image(prompt + ", cinematic film still", aspect=aspect)[0]
+            w, h = ASPECTS.get(aspect, (1344, 768)); k = 1280 / max(w, h); w, h = int(w * k) // 2 * 2, int(h * k) // 2 * 2
+            dur = max(1.0, float(duration)); fr = int(dur * 30); dst = self.out.path(".mp4")
+            run(["ffmpeg", "-v", "error", "-y", "-loop", "1", "-i", str(frame), "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", "-t", f"{dur:.2f}",
+                 "-vf", f"scale={w * 2}:{h * 2}:force_original_aspect_ratio=increase,crop={w * 2}:{h * 2},zoompan=z='1+0.07*on/{fr}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={fr}:s={w}x{h}:fps=30,format=yuv420p",
+                 "-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac", "-shortest", str(dst)])
+            self.last = {"cap": "video", "provider": "local", "model": "moving still (video quota used up)", "seconds": 0, "usd": 0}; self.log(dict(self.last))
+            note = f"Video generation is unavailable right now ({str(e)[:140]}), so clips are a slow push-in on the frame. Run again after the free quota refills (daily) for real motion."
+            if note not in self.notes: self.notes.append(note)
+            return [dst]
 
     def tts(self, text, voice="", speed=1.0, **kw) -> list[Path]:
         return self._call("tts", "tts", text, voice, speed, **kw)
@@ -291,7 +311,18 @@ class Router:
         return self._call("sfx", "sfx", prompt, duration, **kw)
 
     def upscale(self, image: Path, scale=2, **kw) -> list[Path]:
-        return self._call("upscale", "upscale", image, scale, **kw)
+        try:
+            return self._call("upscale", "upscale", image, scale, **kw)
+        except ProviderError as e:
+            if not self._free_route("upscale", kw):
+                raise
+            from PIL import Image, ImageFilter
+            im = Image.open(image).convert("RGB"); f = max(1.0, min(4.0, float(scale)))
+            big = im.resize((int(im.width * f), int(im.height * f)), Image.LANCZOS).filter(ImageFilter.UnsharpMask(radius=1.6, percent=70, threshold=2))
+            dst = self.out.path(".png"); big.save(dst)
+            self.last = {"cap": "upscale", "provider": "local", "model": "Lanczos + sharpen", "seconds": 0, "usd": 0}; self.log(dict(self.last))
+            self.notes.append(f"The AI upscaler is unavailable right now ({str(e)[:140]}), so this is a high-quality resize with sharpening. Run again after the free quota refills for AI detail.")
+            return [dst]
 
     def video_upscale(self, video: Path, scale=2, **kw) -> list[Path]:
         return self._call("video_upscale", "video_upscale", video, scale, **kw)

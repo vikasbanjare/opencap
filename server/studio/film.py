@@ -250,7 +250,8 @@ def film_scenes(ctx, film, which, shots, seconds, animate, dialogue, lipsync, lo
                 if animate:
                     try:
                         v = ctx.router.video(prompt + f". Camera: {s.get('camera', 'Static')}.", image=frame, aspect=ar, duration=max(2, round(dur)), audio=False, **route(model))[0]
-                        clip = M.norm_clip(v, ctx.file(".mp4"), W, H, dur=dur); animated = True
+                        clip = M.norm_clip(v, ctx.file(".mp4"), W, H, dur=dur)
+                        animated = getattr(ctx.router, "last", {}).get("provider") != "local"  # a moving-still fallback is animated next run
                     except ProviderError as e:  # free video quota used up: keep going with a moving still, animate later
                         notes.append(f"Scene {n} shot {k + 1}: {str(e)[:160]}")
                         ctx.progress(f"Scene {n} · shot {k + 1}: video unavailable, using a moving still")
@@ -360,18 +361,28 @@ def film_score(ctx, film, approach, palette, reference, sfx, model):
         f["score"] = [{"scene": "all", "url": ctx.url_of(track), "prompt": r.get("theme")}]
         out.append(("Score · whole film", track))
     else:
-        f["score"] = []
+        f["score"] = []; skipped = []
         for s in cut:
             c = cues.get(s["n"], {}); ctx.progress(f"Scene {s['n']}: cue")
             theme = f"Main theme: {r.get('theme')}. " if approach.startswith("One theme") else ""
             p = (f"Cinematic underscore. {c.get('instruments', '')}. {c.get('bpm', 90)} BPM, in {c.get('key', '')}. Mood: {c.get('mood', '')}. "
                  f"Structure: {c.get('dynamics', 'sustains')}, {int(s.get('duration', 5))} seconds. {theme}Instrumental only, leaves room for dialogue.")
-            m = ctx.router.music(p, max(5, s.get("duration", 5)), **route(model))[0]
-            s["score"] = ctx.url_of(m); f["score"].append({"scene": s["n"], "url": s["score"], "prompt": p})
-            out.append((f"Scene {s['n']} cue · {c.get('mood', '')}", m))
+            try:
+                m = ctx.router.music(p, max(5, s.get("duration", 5)), **route(model))[0]
+                s["score"] = ctx.url_of(m); f["score"].append({"scene": s["n"], "url": s["score"], "prompt": p})
+                out.append((f"Scene {s['n']} cue · {c.get('mood', '')}", m))
+            except ProviderError as e:  # keep the cue sheet and SFX; the final cut runs without this cue
+                skipped.append(f"Scene {s['n']}: {str(e)[:160]}")
             if sfx and c.get("sfx"):
-                e = ctx.router.sfx(c["sfx"], min(22, max(2, s.get("duration", 5))))[0]
-                s["sfx"] = ctx.url_of(e); out.append((f"Scene {s['n']} SFX · {c['sfx']}", e))
+                try:
+                    e = ctx.router.sfx(c["sfx"], min(22, max(2, s.get("duration", 5))))[0]
+                    s["sfx"] = ctx.url_of(e); out.append((f"Scene {s['n']} SFX · {c['sfx']}", e))
+                except ProviderError as e:
+                    skipped.append(f"Scene {s['n']} SFX: {str(e)[:160]}")
+        ctx.store.save_film(f)
+        if skipped:
+            ctx.router.notes.append(f"{len(skipped)} cue(s) were skipped (music generation unavailable, usually the free daily GPU quota). "
+                                    "Run Score again later to fill them in; the final cut works without them.\n" + "\n".join(skipped))
     f["final"] = None
     ctx.store.save_film(f)
     return [J(r.get("cues", []), "Cue sheet", next={"tool": "film_final", "set": {"film": film}, "label": "Next: final cut →"})] + out

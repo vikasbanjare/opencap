@@ -1554,7 +1554,8 @@ def t_subtitles(ctx, media, srt, language, rhythm, max_chars, vocab, cues, censo
         r = ctx.router.llm_json(f"Translate these subtitle lines into {L}, idiomatically. Keep proper nouns, numbers and speaker tags. Same count, same order. "
                                 f"Keep each cue at or under 20 characters per second for its duration; condense rather than paraphrase. Vocabulary: {vocab or '-'}\nJSON: {{\"lines\":[...]}}\n"
                                 + json.dumps([{"text": x, "seconds": round(c["end"] - c["start"], 2)} for x, c in zip(texts, caps)], ensure_ascii=False), "You are a subtitle translator.", mock=mock)
-        tracks[L] = [{**c, "text": break_lines(t, 16 if L in ("Chinese", "Japanese", "Korean") else int(max_chars)), "words": None} for c, t in zip(caps, r["lines"] + texts[len(r["lines"]):])]
+        got = [(x.get("text") or next((v for v in x.values() if isinstance(v, str)), "")) if isinstance(x, dict) else str(x) for x in (r.get("lines") or [])]  # models sometimes echo the {"text":…} objects
+        tracks[L] = [{**c, "text": break_lines(t, 16 if L in ("Chinese", "Japanese", "Korean") else int(max_chars)), "words": None} for c, t in zip(caps, got + texts[len(got):])]
     info = M.probe(media); w, h = (info["width"] or 1920, info["height"] or 1080)
     out = [J([{"start": round(c["start"], 2), "end": round(c["end"], 2), "text": c["text"]} for c in caps[:200]], f"Cues ({len(caps)})")]
     for L, cs in tracks.items():
