@@ -41,7 +41,10 @@ def client(space: str):
     from gradio_client import Client
     with _lock:
         if space not in _clients:
-            _clients[space] = Client(space, hf_token=os.environ.get("HF_TOKEN") or None, verbose=False)
+            import inspect
+            tok = os.environ.get("HF_TOKEN") or None
+            arg = "token" if "token" in inspect.signature(Client.__init__).parameters else "hf_token"  # renamed in gradio_client 2.x
+            _clients[space] = Client(space, **{arg: tok}, verbose=False)
         return _clients[space]
 
 
