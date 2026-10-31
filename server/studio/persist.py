@@ -6,7 +6,7 @@ Free: dataset storage needs no paid plan. Repo: OPENCAP_DATA_REPO, default "<spa
 """
 from __future__ import annotations
 
-import os
+import os, threading, time
 from pathlib import Path
 
 state = {"repo": None, "restored": 0, "error": None, "scheduler": None}
@@ -25,20 +25,62 @@ def start(data: Path):
     state["repo"] = r
     tok = os.environ["HF_TOKEN"].strip()
     try:
-        from huggingface_hub import CommitScheduler, HfApi, snapshot_download
+        from huggingface_hub import HfApi
         api = HfApi(token=tok)
         api.create_repo(r, repo_type="dataset", private=True, exist_ok=True)
-        snapshot_download(r, repo_type="dataset", local_dir=data, token=tok)
-        root = data.resolve()
-        files = [root / f for f in api.list_repo_files(r, repo_type="dataset") if (root / f).is_file()]
-        state["restored"] = len(files)
+    except Exception as e:
+        state["error"] = f"{type(e).__name__}: {str(e)[:300]}"
+        return
+    root = data.resolve()
+    _pull(r, root, tok, ["**/*.json", "*.json"])  # projects, cast and history first: the site is usable right away
+    threading.Thread(target=_finish, args=(api, r, root, tok, data), daemon=True).start()
+
+
+def _pull(r, root: Path, tok, patterns=None):
+    from huggingface_hub import constants, snapshot_download
+    constants.HF_HUB_DISABLE_XET = True  # the Xet path failed mid-restore once ("File size mismatch"); plain HTTPS is fine here
+    for attempt in range(3):
+        try:
+            snapshot_download(r, repo_type="dataset", local_dir=root, token=tok, allow_patterns=patterns, max_workers=8)
+            return True
+        except Exception as e:
+            state["error"] = f"restore attempt {attempt + 1}: {type(e).__name__}: {str(e)[:200]}"
+            time.sleep(2 + 3 * attempt)
+    return False
+
+
+def _finish(api, r, root: Path, tok, data: Path):
+    """Media in the background, then a size check with per-file retries, then the sync starts."""
+    from huggingface_hub import CommitScheduler, hf_hub_download
+    _pull(r, root, tok)
+    restored, failed = [], []
+    try:
+        infos = [i for i in api.list_repo_tree(r, repo_type="dataset", recursive=True) if getattr(i, "size", None) is not None]
+    except Exception as e:
+        infos = []; state["error"] = f"list: {type(e).__name__}: {str(e)[:200]}"
+    for i in infos:
+        dst = root / i.path
+        for attempt in range(4):
+            if dst.is_file() and dst.stat().st_size == i.size:
+                restored.append(dst); break
+            if attempt == 3:
+                continue
+            try:
+                hf_hub_download(r, i.path, repo_type="dataset", local_dir=root, token=tok, force_download=True)
+            except Exception:
+                time.sleep(1 + attempt)
+        else:
+            failed.append(i.path)
+    state["restored"] = len(restored)
+    state["error"] = f"{len(failed)} file(s) could not be restored: {failed[:5]}" if failed else None
+    try:  # starts even if some files failed: the sync only adds, never deletes
         s = CommitScheduler(repo_id=r, repo_type="dataset", folder_path=data, every=1, private=True, token=tok,
                             ignore_patterns=[".cache/**", "**/.cache/**", "**/selftest/**", "*.tmp", "*.part", "**/*.tmp"])
-        for p in files:  # restored files are already in the repo
+        for p in restored:
             s.last_uploaded[p] = p.stat().st_mtime
         state["scheduler"] = s
     except Exception as e:
-        state["error"] = f"{type(e).__name__}: {str(e)[:300]}"
+        state["error"] = f"sync: {type(e).__name__}: {str(e)[:300]}"
 
 
 def flush():

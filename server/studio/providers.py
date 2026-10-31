@@ -847,8 +847,28 @@ class Cloudflare:
             raise ProviderError("Cloudflare needs CLOUDFLARE_ACCOUNT_ID (or save the key as ACCOUNT_ID:TOKEN)")
         return f"https://api.cloudflare.com/client/v4/accounts/{acct}/ai", {"Authorization": f"Bearer {tok}"}
 
+    RISKY = r"\b(body|bodies|build|lean|athletic|muscular|skin|bare|naked|nude|sexy|sensual|curv\w*|chest|bust|hips|thighs|legs|blood\w*|gore|wound\w*|kill\w*|dead|corpse|gun\w*|sidearm|pistol|rifle|weapon\w*|knife|trigger|shoot\w*|bed|lingerie|underwear|swimsuit|bikini|teen\w*|girl|boy|young)\b"
+
+    @staticmethod
+    def _safe(prompt: str) -> str:
+        """Cloudflare's NSFW filter has false positives on ordinary casting and film text: tone it down for one retry."""
+        import re
+        p = re.sub(Cloudflare.RISKY, "", prompt, flags=re.I)
+        return "Family-friendly, fully clothed, professional film still. " + re.sub(r"\s{2,}", " ", p).strip()
+
     @staticmethod
     def _run(r, model, body=None, form=None, files=None):
+        try:
+            return Cloudflare._run1(r, model, body, form, files)
+        except ProviderError as e:
+            if "nsfw" not in str(e).lower():
+                raise
+            if body and "prompt" in body: body = {**body, "prompt": Cloudflare._safe(body["prompt"])[:2000]}
+            if form and "prompt" in form: form = {**form, "prompt": Cloudflare._safe(form["prompt"])[:1900]}
+            return Cloudflare._run1(r, model, body, form, files)
+
+    @staticmethod
+    def _run1(r, model, body=None, form=None, files=None):
         base, h = Cloudflare._base(r)
         if form is not None:
             data, ct = multipart(form, files or {})
