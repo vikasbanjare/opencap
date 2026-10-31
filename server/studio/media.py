@@ -357,7 +357,11 @@ def mix(video: Path, out: Path, voice: Path | None = None, music: Path | None = 
 
 def loudnorm(video: Path, out: Path, target: float = -14.0) -> Path:
     """Normalise to a platform loudness target (-14 LUFS social, -23 broadcast, -27 dialogue-gated streaming), true peak -1.5 dBTP."""
-    sh(["ffmpeg", "-v", "error", "-y", "-i", str(video), "-af", f"loudnorm=I={target}:TP=-1.5:LRA=11", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(out)])
+    try:
+        sh(["ffmpeg", "-v", "error", "-y", "-i", str(video), "-af", f"loudnorm=I={target}:TP=-1.5:LRA=11", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(out)])
+    except Exception:  # loudnorm can emit NaN on near-silent or very short audio: clean the samples and limit instead
+        sh(["ffmpeg", "-v", "error", "-y", "-i", str(video), "-af", "aresample=48000,aformat=sample_fmts=s16,alimiter=limit=0.89",
+            "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(out)])
     return out
 
 
