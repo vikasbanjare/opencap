@@ -22,6 +22,8 @@ With no paid keys, every capability now runs at no cost on commercially usable o
 
 Optional free boost: Cloudflare Workers AI gives 10,000 free Neurons a day with no card. Add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as Space secrets, and images (FLUX.1 schnell, about 170 a day), edits, inpaint, try-on, face swap (FLUX.2 klein 4B, about 80 a day) and text and vision (Gemma 4 26B) move there. When the day's Neurons run out, each call falls back to the Hugging Face Spaces.
 
+Unlimited free images and edits: FLUX.2 klein 4B (Apache-2.0) runs on the Space's own ZeroGPU. In-process GPU calls keep working after the account's daily ZeroGPU quota and Cloudflare's Neurons are used up, so it is the last fallback for every image, edit, inpaint, try-on and face swap.
+
 Saved work: a Space's disk is wiped on every restart. With `HF_TOKEN` set (write access), the data folder (films, cast, jobs, media) is restored from the private dataset `<space>-data` at startup and synced back every minute and after each job (`server/studio/persist.py`).
 
 Limits:
