@@ -100,6 +100,57 @@ def keep(r, src: str, ext: str | None = None) -> Path:
     dst = r.out.path(ext or Path(src).suffix or ".bin"); shutil.copy(src, dst); return dst
 
 
+# ---------- images and edits on this Space's own ZeroGPU (FLUX.2 klein 4B, Apache-2.0) ----------
+# In-process GPU calls kept working when the account's daily ZeroGPU quota and Cloudflare's Neurons were used up,
+# so this is the last free fallback for every image and edit. One model does both: references go in as `image`.
+
+IMAGE_MODEL = os.environ.get("OPENCAP_FREE_IMAGE", "black-forest-labs/FLUX.2-klein-4B")
+_img = {"pipe": None, "error": None}
+
+
+def load_image_model():
+    """Call at startup, before ZeroGPU starts, like load_llm()."""
+    if not enabled() or os.environ.get("OPENCAP_LOCAL_IMAGE", "1") == "0" or _img["pipe"] is not None:
+        return
+    try:
+        import torch
+        from diffusers import Flux2KleinPipeline
+        pipe = Flux2KleinPipeline.from_pretrained(IMAGE_MODEL, torch_dtype=torch.bfloat16)
+        import spaces  # noqa: F401  only on a ZeroGPU Space: no CPU fallback (far too slow)
+        pipe.to("cuda")
+        _img["pipe"] = pipe
+    except Exception as e:
+        _img["error"] = f"{type(e).__name__}: {str(e)[:300]}"
+
+
+def _klein(prompt: str, images: list, width: int, height: int, seed: int):
+    import torch
+    kw = {"image": images} if images else {}
+    g = torch.Generator(device="cuda").manual_seed(int(seed))
+    return _img["pipe"](prompt=prompt, height=height, width=width, guidance_scale=1.0, num_inference_steps=4, generator=g, **kw).images[0]
+
+
+try:
+    import spaces
+    _klein = spaces.GPU(duration=45)(_klein)
+except Exception:
+    pass
+
+
+def local_image(prompt: str, width: int, height: int, seed: int | None = None, refs: list[Path] | None = None):
+    """A PIL image from FLUX.2 klein on this Space; refs (up to 4) make it an edit. Raises if the model is not loaded."""
+    from .providers import ProviderError
+    if _img["pipe"] is None:
+        raise ProviderError(f"in-Space image model unavailable: {_img['error'] or 'not loaded'}")
+    from PIL import Image
+    ims = []
+    for p in (refs or [])[:4]:
+        im = Image.open(p).convert("RGB"); im.thumbnail((1024, 1024)); ims.append(im)
+    w, h = max(256, int(width) // 16 * 16), max(256, int(height) // 16 * 16)
+    import random
+    return _klein(prompt[:2000], ims, w, h, seed if seed is not None else random.randint(0, 2**31 - 1))
+
+
 # ---------- background removal on CPU (BiRefNet lite, MIT): no GPU quota at all ----------
 
 _bg = {"sess": None, "pool": None}
@@ -193,4 +244,4 @@ def chat(prompt: str, system: str = "", images: list[Path] | None = None, max_ne
 
 def status() -> dict:
     return {"enabled": enabled(), "llm": LLM_MODEL, "llm_loaded": _llm["model"] is not None, "llm_device": _llm["device"],
-            "llm_error": _llm["error"], "hf_token": bool(os.environ.get("HF_TOKEN")), "spaces": SPACES, "fallback": FALLBACK, "kokoro": LOCAL_TTS is not None}
+            "llm_error": _llm["error"], "hf_token": bool(os.environ.get("HF_TOKEN")), "spaces": SPACES, "fallback": FALLBACK, "image_model": IMAGE_MODEL, "image_loaded": _img["pipe"] is not None, "image_error": _img["error"], "kokoro": LOCAL_TTS is not None}

@@ -61,7 +61,7 @@ MODELS: dict[str, dict[str, list[str]]] = {  # verified 2026-10-28, see docs/pro
                    "edit": ["@cf/black-forest-labs/flux-2-klein-4b"], "inpaint": ["@cf/black-forest-labs/flux-2-klein-4b"],
                    "tryon": ["@cf/black-forest-labs/flux-2-klein-4b"], "faceswap": ["@cf/black-forest-labs/flux-2-klein-4b"]},
     # free: public ZeroGPU Spaces + in-process Qwen3-VL and Kokoro (see free.py); no key, daily GPU quota
-    "free": {"llm": ["Qwen3-VL-4B (this Space)"], "vision": ["Qwen3-VL-4B (this Space)"], "image": ["FLUX.1-schnell"], "edit": ["FLUX.1 Kontext / Qwen-Image-Edit"],
+    "free": {"llm": ["Qwen3-VL-4B (this Space)"], "vision": ["Qwen3-VL-4B (this Space)"], "image": ["FLUX.2 klein (this Space) / FLUX.1-schnell"], "edit": ["FLUX.2 klein (this Space) / Kontext"],
              "inpaint": ["Kontext + mask"], "tryon": ["Kontext panels"], "faceswap": ["Kontext panels"], "video": ["Wan 2.2 I2V / LTX-Video"],
              "music": ["ACE-Step"], "sfx": ["TangoFlux / Stable Audio Open"], "upscale": ["Finegrain enhancer"], "bg_remove": ["BiRefNet"], "lipsync": ["LatentSync"],
              "tts": ["Kokoro-82M (this Space)"], "video_upscale": ["ffmpeg lanczos (local)"]},
@@ -977,8 +977,11 @@ class Free:
         for i in range(max(1, min(4, int(n)))):
             kw = dict(prompt=prompt + (f". Avoid: {negative}" if negative else ""), seed=int(seed or 0) + i, randomize_seed=seed is None,
                       width=w, height=h, num_inference_steps=4)
-            res = free.first_ok(lambda: free.call(free.SPACES["image"], "/infer", **kw), lambda: free.call(free.FALLBACK["image"], "/infer", **kw))
-            out.append(free.keep(r, free.path_of(res)))
+            def here(kw=kw):  # this Space's own GPU first: no daily quota
+                p = r.out.path(".png"); free.local_image(kw["prompt"], w, h, None if seed is None else kw["seed"]).save(p); return p
+            p = free.first_ok(here, lambda: free.keep(r, free.path_of(free.call(free.SPACES["image"], "/infer", **kw))),
+                              lambda: free.keep(r, free.path_of(free.call(free.FALLBACK["image"], "/infer", **kw))))
+            out.append(p)
         return out
 
     @staticmethod
@@ -993,9 +996,20 @@ class Free:
         p = r.out.path(".png"); sheet.save(p); return p, boxes
 
     @staticmethod
+    def _here(r, refs: list[Path], prompt: str) -> Path:
+        from PIL import Image
+        from . import free
+        w, h = Image.open(refs[0]).size; k = 1024 / max(w, h)
+        p = r.out.path(".png"); free.local_image(prompt, int(w * k), int(h * k), refs=refs).save(p); return p
+
+    @staticmethod
     def _edit_one(r, image: Path, prompt: str) -> Path:
         from gradio_client import handle_file
         from . import free
+        try:  # this Space's own GPU first: no daily quota
+            return Free._here(r, [image], prompt)
+        except Exception:
+            pass
         res = free.first_ok(
             lambda: free.call(free.SPACES["edit"], "/infer", input_image=handle_file(str(image)), prompt=prompt, seed=0, randomize_seed=True,
                               guidance_scale=2.5, steps=16),  # Kontext: 16 steps keeps the GPU reservation small
@@ -1006,6 +1020,12 @@ class Free:
     @staticmethod
     def edit(r, model, prompt, refs, aspect, n):
         from PIL import Image
+        if len(refs) > 1:  # FLUX.2 klein takes up to 4 references natively
+            try:
+                lead = f"Edit image 0 using images 1-{len(refs[:4]) - 1} as references: "
+                return [Free._here(r, refs, lead + prompt) for _ in range(max(1, min(4, int(n))))]
+            except Exception:
+                pass
         if len(refs) == 1:
             return [Free._edit_one(r, refs[0], prompt) for _ in range(max(1, min(4, int(n))))]
         sheet, boxes = Free._panels(r, refs)

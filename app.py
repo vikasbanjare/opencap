@@ -16,6 +16,7 @@ try:  # ZeroGPU wants at least one GPU function before it will start a Space
     # Studio's free text/vision model registers its GPU function and places its weights before ZeroGPU starts
     from studio import free as _free
     _free.load_llm()
+    _free.load_image_model()  # FLUX.2 klein for images and edits on this Space's GPU (no daily quota)
 
     if hasattr(spaces, "zero") and hasattr(spaces.zero, "startup"):
         spaces.zero.startup()  # normally run by gr.Blocks.launch, which we skip; reports the GPU function to ZeroGPU
