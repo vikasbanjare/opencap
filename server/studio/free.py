@@ -55,7 +55,8 @@ def call(space: str, api: str, **kw):
     except Exception as e:  # quota, a sleeping or changed Space: say so plainly
         msg = str(e)
         if "quota" in msg.lower() or "GPU" in msg:
-            msg = "the free GPU quota is used up for now (it refills daily); try later, add HF_TOKEN as a Space secret, or add a provider key"
+            msg = ("the free GPU quota is used up for now (it refills daily); try later, add HF_TOKEN as a Space secret, or add a provider key"
+                   f" [{msg[:160]}]")
         raise ProviderError(f"free {space}: {msg[:300]}")
 
 
