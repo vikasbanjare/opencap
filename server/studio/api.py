@@ -142,6 +142,8 @@ def make_router(DATA: Path, media_prefix: str = "/media", transcribe=None, local
             job["trace"] = traceback.format_exc()[-2000:]
         job["finished"] = time.time()
         save_job(job)
+        from . import persist
+        persist.flush()  # push this job's results to the saved copy now, not in a minute
 
     @api.get("/jobs")
     def list_jobs(tool: str | None = None, limit: int = 100):
@@ -297,7 +299,8 @@ def make_router(DATA: Path, media_prefix: str = "/media", transcribe=None, local
     @api.get("/free/status")
     def free_status():
         from . import free
-        return free.status()
+        from . import persist
+        return {**free.status(), "storage": persist.status()}
 
     _selftest: dict = {}
 

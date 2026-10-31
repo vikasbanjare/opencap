@@ -23,6 +23,8 @@ from fastapi.staticfiles import StaticFiles
 ROOT = Path(__file__).resolve().parent
 DATA = Path(os.environ.get("OPENCAP_DATA", ROOT / "data"))
 DATA.mkdir(parents=True, exist_ok=True)
+from studio import persist as _persist  # noqa: E402  restore saved projects before anything reads DATA
+_persist.start(DATA)
 WHISPER_MODEL = os.environ.get("OPENCAP_WHISPER", "large-v3-turbo")  # cached locally already
 WHISPER_COMPUTE = os.environ.get("OPENCAP_COMPUTE", "int8")
 
