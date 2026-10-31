@@ -304,6 +304,24 @@ def make_router(DATA: Path, media_prefix: str = "/media", transcribe=None, local
 
     _selftest: dict = {}
 
+    def _check(token):
+        want = os.environ.get("OPENCAP_SELFTEST")
+        if not want or token != want:
+            raise HTTPException(403, "set the OPENCAP_SELFTEST variable and pass ?token=")
+
+    @api.get("/e2e")
+    def e2e_start(token: str = ""):
+        """Runs the whole site end to end in the background (film from logline to final cut, then every tool)."""
+        _check(token)
+        from . import e2e
+        return {"started": e2e.start(S / "files" / "selftest" / "e2e"), **e2e.report()}
+
+    @api.get("/e2e/status")
+    def e2e_status(token: str = ""):
+        _check(token)
+        from . import e2e
+        return e2e.report()
+
     @api.get("/selftest")
     def selftest(token: str = "", caps: str = "llm,image,tts", provider: str = "free"):
         """Runs one tiny job per capability on the Free provider. Needs ?token= matching the OPENCAP_SELFTEST variable."""
