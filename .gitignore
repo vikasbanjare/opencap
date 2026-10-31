@@ -6,3 +6,4 @@ server/data
 server/models
 server/.venv-clone
 __pycache__
+server/studio-settings.json
