@@ -430,7 +430,8 @@ function FreeCard() {
   return (
     <div className="card">
       <h4>Free tier {f.enabled ? <span className="pill ok">on</span> : <span className="pill">off</span>}</h4>
-      <p className="muted small">With no paid keys, every tool runs on free, commercially usable open models: media on public Hugging Face ZeroGPU Spaces, text and image understanding on {f.llm} in this server, voice on Kokoro. GPU time comes from Hugging Face's free daily quota, so heavy use pauses until it refills. Add <code>HF_TOKEN</code> as a Space secret to use your own account's quota, or add any paid key below and that capability switches to it.</p>
+      <p className="muted small">With no paid keys, every tool runs on free open models: media on public Hugging Face ZeroGPU Spaces, text and image understanding on {f.llm} in this server, voice on Kokoro. Hugging Face's free GPU quota is small (about 3 minutes and a few runs a day), so heavy use pauses until it refills.</p>
+      <p className="muted small"><strong>For many more free images, edits and text:</strong> add a free Cloudflare account's <code>CLOUDFLARE_API_TOKEN</code> and <code>CLOUDFLARE_ACCOUNT_ID</code> as Space secrets (10,000 free Neurons a day, about 170 images or 80 edits, no card). When it runs out, Studio falls back to the Hugging Face Spaces. Add any paid key below and that capability switches to it.</p>
       <div className="tbl-wrap"><table className="tbl"><tbody>
         <tr><td>Text & vision model</td><td>{f.llm_loaded ? `loaded on ${f.llm_device}` : f.llm_error ? `not loaded: ${f.llm_error}` : 'loads on first use'}</td></tr>
         <tr><td>Hugging Face token</td><td>{f.hf_token ? 'set (your quota)' : 'not set (shared anonymous quota)'}</td></tr>
@@ -475,7 +476,7 @@ function SettingsPage({ prefs, setPrefs }: { prefs: ThemePrefs; setPrefs: (p: Th
             <strong>{p.id}</strong><span className={`pill ${p.configured ? 'ok' : ''}`}>{p.configured ? (p.fromEnv ? 'from env' : 'configured') : 'no key'}</span>
             <span className="muted small">{p.caps.join(', ')}</span>
             {p.id === 'free' ? <><span className="muted small">No key needed</span><span /></> : <>
-              <input type="password" placeholder={`${p.env}`} value={keys[p.id] ?? ''} onChange={e => setKeys({ ...keys, [p.id]: e.target.value })} />
+              <input type="password" placeholder={p.id === 'cloudflare' ? 'ACCOUNT_ID:TOKEN' : `${p.env}`} value={keys[p.id] ?? ''} onChange={e => setKeys({ ...keys, [p.id]: e.target.value })} />
               <button onClick={() => save({ keys: { [p.id]: keys[p.id] ?? '' } }).then(() => setKeys({ ...keys, [p.id]: '' }))}>{keys[p.id] ? 'Save' : 'Clear'}</button></>}
           </div>
         ))}

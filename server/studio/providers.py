@@ -5,7 +5,8 @@ the one set in Settings for that capability, else the first provider with an API
 (placeholder outputs, so every tool works end to end with no keys). Providers talk plain HTTPS through
 urllib, so no SDKs are needed. Add a key in the environment (or Settings) to switch a capability on:
 
-  FAL_KEY, OPENAI_API_KEY, GEMINI_API_KEY, ELEVENLABS_API_KEY, REPLICATE_API_TOKEN
+  FAL_KEY, OPENAI_API_KEY, GEMINI_API_KEY, ELEVENLABS_API_KEY, REPLICATE_API_TOKEN,
+  CLOUDFLARE_API_TOKEN (+ CLOUDFLARE_ACCOUNT_ID; free 10,000 Neurons a day, no card)
 
 Model ids drift; each provider's defaults live in MODELS and can be overridden per capability in Settings.
 """
@@ -54,15 +55,21 @@ MODELS: dict[str, dict[str, list[str]]] = {  # verified 2026-10-28, see docs/pro
     "elevenlabs": {"tts": ["eleven_multilingual_v2", "eleven_v3", "eleven_flash_v2_5"], "music": ["music_v2_5", "music_v2", "music_v1"], "sfx": ["eleven_text_to_sound_v2"]},
     "replicate": {"image": ["black-forest-labs/flux-schnell", "black-forest-labs/flux-1.1-pro"], "video": ["kwaivgi/kling-v3-video", "minimax/hailuo-2.3", "kwaivgi/kling-v2.1"],
                   "upscale": ["nightmareai/real-esrgan"], "bg_remove": ["bria/remove-background", "recraft-ai/recraft-remove-background"]},
+    # cloudflare: Workers AI free allocation (10,000 Neurons/day: about 170 FLUX images or 80 edits, or ~300 long LLM answers)
+    "cloudflare": {"llm": ["@cf/google/gemma-4-26b-a4b-it", "@cf/zai-org/glm-4.7-flash"], "vision": ["@cf/google/gemma-4-26b-a4b-it"],
+                   "image": ["@cf/black-forest-labs/flux-1-schnell", "@cf/black-forest-labs/flux-2-klein-4b"],
+                   "edit": ["@cf/black-forest-labs/flux-2-klein-4b"], "inpaint": ["@cf/black-forest-labs/flux-2-klein-4b"],
+                   "tryon": ["@cf/black-forest-labs/flux-2-klein-4b"], "faceswap": ["@cf/black-forest-labs/flux-2-klein-4b"]},
     # free: public ZeroGPU Spaces + in-process Qwen3-VL and Kokoro (see free.py); no key, daily GPU quota
-    "free": {"llm": ["Qwen3-VL-4B (this Space)"], "vision": ["Qwen3-VL-4B (this Space)"], "image": ["FLUX.1-schnell"], "edit": ["Qwen-Image-Edit"],
-             "inpaint": ["Qwen-Image-Edit + mask"], "tryon": ["Qwen-Image-Edit panels"], "faceswap": ["Qwen-Image-Edit panels"], "video": ["LTX-Video 0.9.8 distilled"],
-             "music": ["ACE-Step"], "sfx": ["Stable Audio Open"], "upscale": ["Finegrain enhancer"], "bg_remove": ["BiRefNet"], "lipsync": ["LatentSync"],
+    "free": {"llm": ["Qwen3-VL-4B (this Space)"], "vision": ["Qwen3-VL-4B (this Space)"], "image": ["FLUX.1-schnell"], "edit": ["FLUX.1 Kontext / Qwen-Image-Edit"],
+             "inpaint": ["Kontext + mask"], "tryon": ["Kontext panels"], "faceswap": ["Kontext panels"], "video": ["Wan 2.2 I2V / LTX-Video"],
+             "music": ["ACE-Step"], "sfx": ["TangoFlux / Stable Audio Open"], "upscale": ["Finegrain enhancer"], "bg_remove": ["BiRefNet"], "lipsync": ["LatentSync"],
              "tts": ["Kokoro-82M (this Space)"], "video_upscale": ["ffmpeg lanczos (local)"]},
     "mock": {c: ["placeholder"] for c in CAPS},
 }
-KEY_ENV = {"free": "HF_TOKEN", "fal": "FAL_KEY", "openai": "OPENAI_API_KEY", "gemini": "GEMINI_API_KEY", "elevenlabs": "ELEVENLABS_API_KEY", "replicate": "REPLICATE_API_TOKEN"}
-ORDER = ["fal", "openai", "gemini", "elevenlabs", "replicate", "free"]  # free last: paid keys win when present
+KEY_ENV = {"free": "HF_TOKEN", "cloudflare": "CLOUDFLARE_API_TOKEN", "fal": "FAL_KEY", "openai": "OPENAI_API_KEY", "gemini": "GEMINI_API_KEY", "elevenlabs": "ELEVENLABS_API_KEY", "replicate": "REPLICATE_API_TOKEN"}
+ORDER = ["fal", "openai", "gemini", "elevenlabs", "replicate", "cloudflare", "free"]  # free ones last: paid keys win when present
+FREE_PROVIDERS = ("mock", "free", "cloudflare")
 # which provider is preferred per capability when several are configured
 PREFER = {"llm": ["openai", "gemini", "fal"], "vision": ["openai", "gemini"], "tts": ["elevenlabs", "gemini", "fal", "openai"],
           "music": ["elevenlabs", "fal"], "sfx": ["elevenlabs", "fal"], "image": ["fal", "openai", "gemini", "replicate"],
@@ -227,8 +234,15 @@ class Router:
         if fn is None:
             prov, mdl, fn = "mock", "placeholder", getattr(Mock, fn_name)
         t = time.time()
-        res = fn(self, mdl, *a, **kw)
-        self.last = {"cap": cap, "provider": prov, "model": mdl, "seconds": round(time.time() - t, 2), "usd": 0 if prov in ("mock", "free") else COST[cap]}
+        try:
+            res = fn(self, mdl, *a, **kw)
+        except ProviderError:
+            # Cloudflare's daily free Neurons ran out (or it is down): fall through to the free Spaces
+            alt = getattr(Free, fn_name, None)
+            if prov != "cloudflare" or not alt or not self.s.key("free") or cap not in MODELS["free"]:
+                raise
+            prov, mdl, res = "free", MODELS["free"][cap][0], alt(self, MODELS["free"][cap][0], *a, **kw)
+        self.last = {"cap": cap, "provider": prov, "model": mdl, "seconds": round(time.time() - t, 2), "usd": 0 if prov in FREE_PROVIDERS else COST[cap]}
         self.log(dict(self.last))
         return res
 
@@ -779,6 +793,99 @@ def _hsv(h, s, v):
     return tuple(int(c * 255) for c in colorsys.hsv_to_rgb(h / 360, s, v))
 
 
+class Cloudflare:
+    """Workers AI on the free allocation: FLUX images and FLUX.2 klein edits, Gemma 4 for text and vision.
+    Set CLOUDFLARE_API_TOKEN (Workers AI permission) and CLOUDFLARE_ACCOUNT_ID, or save the key as "ACCOUNT_ID:TOKEN"."""
+
+    @staticmethod
+    def _base(r):
+        key = r.s.key("cloudflare") or ""
+        acct, tok = key.split(":", 1) if ":" in key else (os.environ.get("CLOUDFLARE_ACCOUNT_ID", ""), key)
+        if not acct:
+            raise ProviderError("Cloudflare needs CLOUDFLARE_ACCOUNT_ID (or save the key as ACCOUNT_ID:TOKEN)")
+        return f"https://api.cloudflare.com/client/v4/accounts/{acct}/ai", {"Authorization": f"Bearer {tok}"}
+
+    @staticmethod
+    def _run(r, model, body=None, form=None, files=None):
+        base, h = Cloudflare._base(r)
+        if form is not None:
+            data, ct = multipart(form, files or {})
+            res = http("POST", f"{base}/run/{model}", {**h, "Content-Type": ct}, data)
+        else:
+            res = http("POST", f"{base}/run/{model}", h, body)
+        if not res.get("success", True):
+            raise ProviderError(f"cloudflare {model}: {res.get('errors')}")
+        return res.get("result", res)
+
+    @staticmethod
+    def llm(r, model, prompt, system, json_mode, images):
+        import re
+        base, h = Cloudflare._base(r)
+        content: list | str = prompt + ("\nReturn valid JSON only." if json_mode else "")
+        if images:
+            content = [{"type": "text", "text": content}] + [{"type": "image_url", "image_url": {"url": data_uri(Cloudflare._small(r, p, 1024))}} for p in images[:6]]
+        body = {"model": model, "max_tokens": 4096, "messages": ([{"role": "system", "content": system}] if system else []) + [{"role": "user", "content": content}]}
+        res = http("POST", f"{base}/v1/chat/completions", h, body)
+        txt = res["choices"][0]["message"].get("content") or ""
+        return re.sub(r"<think>.*?</think>", "", txt, flags=re.S).strip()
+
+    @staticmethod
+    def _small(r, p: Path, edge: int) -> Path:
+        """Workers AI image inputs must be small (FLUX.2 klein: under 512x512)."""
+        from PIL import Image
+        im = Image.open(p).convert("RGB"); im.thumbnail((edge, edge)); q = r.out.path(".png"); im.save(q); return q
+
+    @staticmethod
+    def _dims(aspect, cap=1024):
+        w, h = ASPECTS.get(aspect, (1024, 1024)); s = min(1.0, cap / max(w, h))
+        return int(w * s) // 16 * 16, int(h * s) // 16 * 16
+
+    @staticmethod
+    def image(r, model, prompt, aspect, n, negative, seed):
+        p = prompt + (f". Avoid: {negative}" if negative else "")
+        out = []
+        for i in range(max(1, min(4, int(n)))):
+            if "klein" in model:
+                w, h = Cloudflare._dims(aspect)
+                res = Cloudflare._run(r, model, form={"prompt": p, "width": w, "height": h})
+            else:  # flux-1-schnell: square 1024, up to 8 steps; crop to the aspect locally
+                res = Cloudflare._run(r, model, {"prompt": p, "steps": 4, **({"seed": int(seed) + i} if seed is not None else {})})
+            img = r.out.save(base64.b64decode(res["image"]), ".jpg")
+            if "klein" not in model and aspect not in ("1:1", None):
+                from PIL import Image
+                im = Image.open(img); w, h = ASPECTS.get(aspect, (1024, 1024)); W, H = im.size
+                cw, ch = (W, int(W * h / w)) if w >= h else (int(H * w / h), H)
+                im.crop(((W - cw) // 2, (H - ch) // 2, (W + cw) // 2, (H + ch) // 2)).save(img)
+            out.append(img)
+        return out
+
+    @staticmethod
+    def edit(r, model, prompt, refs, aspect, n):
+        from PIL import Image
+        src = Image.open(refs[0]); w, h = src.size; s = 1024 / max(w, h)
+        W, H = max(256, int(w * s) // 16 * 16), max(256, int(h * s) // 16 * 16)
+        files = {f"input_image_{i}": [Cloudflare._small(r, p, 504)] for i, p in enumerate(refs[:4])}
+        lead = "Edit image 0" + (f" using images 1-{len(refs[:4]) - 1} as references" if len(refs) > 1 else "") + ": "
+        return [r.out.save(base64.b64decode(Cloudflare._run(r, model, form={"prompt": lead + prompt, "width": W, "height": H}, files=files)["image"]), ".jpg")
+                for _ in range(max(1, min(4, int(n))))]
+
+    @staticmethod
+    def inpaint(r, model, image, mask, prompt):
+        from PIL import Image, ImageFilter
+        res = Cloudflare.edit(r, model, f"{prompt}. Change only what the instruction asks; keep everything else identical.", [image], "1:1", 1)[0]
+        src = Image.open(image).convert("RGB"); new = Image.open(res).convert("RGB").resize(src.size)
+        m = Image.open(mask).convert("L").resize(src.size).filter(ImageFilter.GaussianBlur(6))
+        src.paste(new, (0, 0), m); p = r.out.path(".png"); src.save(p); return [p]
+
+    @staticmethod
+    def tryon(r, model, person, garment):
+        return Cloudflare.edit(r, model, "dress the person from image 0 in the garment from image 1, matching its colour, fabric and cut; keep the face, pose and background", [person, garment], "3:4", 1)
+
+    @staticmethod
+    def faceswap(r, model, target, face):
+        return Cloudflare.edit(r, model, "give the person in image 0 the face of the person in image 1; keep the lighting, pose, expression and hair of image 0", [target, face], "1:1", 1)
+
+
 class Free:
     """No-cost provider: public ZeroGPU Spaces for media, in-process Qwen3-VL for text/vision, Kokoro for voice."""
 
@@ -940,4 +1047,4 @@ class Free:
     video_upscale = None  # falls back to the local ffmpeg upscale
 
 
-PROVIDERS = {"free": Free, "fal": Fal, "openai": OpenAI, "gemini": Gemini, "elevenlabs": ElevenLabs, "replicate": Replicate, "mock": Mock}
+PROVIDERS = {"free": Free, "cloudflare": Cloudflare, "fal": Fal, "openai": OpenAI, "gemini": Gemini, "elevenlabs": ElevenLabs, "replicate": Replicate, "mock": Mock}

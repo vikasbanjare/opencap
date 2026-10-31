@@ -15,7 +15,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request, UploadFile
 
-from .providers import Out, ProviderError, Router, Settings
+from .providers import FREE_PROVIDERS, Out, ProviderError, Router, Settings
 from . import tools as T
 from . import film  # noqa: F401  registers the Film Studio tools
 
@@ -290,8 +290,8 @@ def make_router(DATA: Path, media_prefix: str = "/media", transcribe=None, local
         tool = T.TOOLS.get(tool_id)
         if not tool:
             raise HTTPException(404, "unknown tool")
-        rows = [dict(cap=c, provider=p, model=m, usd=0 if p in ("mock", "free") else COST.get(c, 0)) for c in tool.caps for p, m in [settings.route(c)]]
-        return {"usd": round(sum(r["usd"] for r in rows), 3), "free": all(r["provider"] == "free" for r in rows) and bool(rows),
+        rows = [dict(cap=c, provider=p, model=m, usd=0 if p in FREE_PROVIDERS else COST.get(c, 0)) for c in tool.caps for p, m in [settings.route(c)]]
+        return {"usd": round(sum(r["usd"] for r in rows), 3), "free": all(r["provider"] in ("free", "cloudflare") for r in rows) and bool(rows),
                 "placeholder": any(r["provider"] == "mock" for r in rows), "calls": rows}
 
     @api.get("/free/status")
@@ -302,7 +302,7 @@ def make_router(DATA: Path, media_prefix: str = "/media", transcribe=None, local
     _selftest: dict = {}
 
     @api.get("/selftest")
-    def selftest(token: str = "", caps: str = "llm,image,tts"):
+    def selftest(token: str = "", caps: str = "llm,image,tts", provider: str = "free"):
         """Runs one tiny job per capability on the Free provider. Needs ?token= matching the OPENCAP_SELFTEST variable."""
         want = os.environ.get("OPENCAP_SELFTEST")
         if not want or token != want:
@@ -312,12 +312,12 @@ def make_router(DATA: Path, media_prefix: str = "/media", transcribe=None, local
         r = Router(settings, out, lambda rec: None)
         img = out.path(".png"); Image.new("RGB", (512, 512), (40, 90, 160)).save(img)
         mask = out.path(".png"); Image.new("L", (512, 512), 0).save(mask)
-        tests = {"llm": lambda: r.llm("Say ok.", provider="free")[:60], "vision": lambda: r.llm("What colour is this?", images=[img], provider="free")[:60],
-                 "image": lambda: r.image("a red apple on a table", aspect="1:1", provider="free"), "edit": lambda: r.image("make it orange", refs=[img], provider="free"),
-                 "video": lambda: r.video("waves on a beach", aspect="16:9", duration=2, provider="free"), "music": lambda: r.music("calm piano, instrumental", 10, provider="free"),
-                 "sfx": lambda: r.sfx("door knock", 2, provider="free"), "upscale": lambda: r.upscale(img, 2, provider="free"),
-                 "bg_remove": lambda: r.bg_remove(img, provider="free"), "tts": lambda: r.tts("Hello from Pulse Studio.", provider="free"),
-                 "inpaint": lambda: r.inpaint(img, mask, "add a small star", provider="free")}
+        tests = {"llm": lambda: r.llm("Say ok.", provider=provider)[:60], "vision": lambda: r.llm("What colour is this?", images=[img], provider=provider)[:60],
+                 "image": lambda: r.image("a red apple on a table", aspect="1:1", provider=provider), "edit": lambda: r.image("make it orange", refs=[img], provider=provider),
+                 "video": lambda: r.video("waves on a beach", aspect="16:9", duration=2, provider=provider), "music": lambda: r.music("calm piano, instrumental", 10, provider=provider),
+                 "sfx": lambda: r.sfx("door knock", 2, provider=provider), "upscale": lambda: r.upscale(img, 2, provider=provider),
+                 "bg_remove": lambda: r.bg_remove(img, provider=provider), "tts": lambda: r.tts("Hello from Pulse Studio.", provider=provider),
+                 "inpaint": lambda: r.inpaint(img, mask, "add a small star", provider=provider)}
         res = {}
         for c in [x for x in caps.split(",") if x in tests]:
             t0 = time.time()

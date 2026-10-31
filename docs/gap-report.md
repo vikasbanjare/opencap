@@ -20,6 +20,8 @@ With no paid keys, every capability now runs at no cost on commercially usable o
 | Voice | Kokoro-82M, in this Space | Apache-2.0 |
 | Subtitles | faster-whisper, in this Space | MIT |
 
+Optional free boost: Cloudflare Workers AI gives 10,000 free Neurons a day with no card. Add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as Space secrets, and images (FLUX.1 schnell, about 170 a day), edits, inpaint, try-on, face swap (FLUX.2 klein 4B, about 80 a day) and text and vision (Gemma 4 26B) move there. When the day's Neurons run out, each call falls back to the Hugging Face Spaces.
+
 Limits:
 - GPU time comes from Hugging Face's free daily ZeroGPU quota (about 3 minutes a day on a free account). Each tool uses the Space that asks for the least GPU time per call. Rough cost per run: image 10 s, edit 30 s, SFX 15 s, video 30-40 s, music 60 s, lip sync 180 s (too much for a free account). Set `HF_TOKEN` as a Space secret to use your own account's quota.
 - Each public Space can be busy, sleep or change its API. When one fails, the job says so plainly and nothing is billed. Swapping a Space is one line in `SPACES`.
