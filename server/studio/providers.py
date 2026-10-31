@@ -865,9 +865,9 @@ class Cloudflare:
         for i in range(max(1, min(4, int(n)))):
             if "klein" in model:
                 w, h = Cloudflare._dims(aspect)
-                res = Cloudflare._run(r, model, form={"prompt": p, "width": w, "height": h})
-            else:  # flux-1-schnell: square 1024, up to 8 steps; crop to the aspect locally
-                res = Cloudflare._run(r, model, {"prompt": p, "steps": 4, **({"seed": int(seed) + i} if seed is not None else {})})
+                res = Cloudflare._run(r, model, form={"prompt": p, "width": w, "height": h, **({"seed": int(seed) + i} if seed is not None else {})})
+            else:  # flux-1-schnell takes only prompt and steps (any other field is rejected); square 1024, crop to the aspect locally
+                res = Cloudflare._run(r, model, {"prompt": p, "steps": 4})
             img = r.out.save(base64.b64decode(res["image"]), ".jpg")
             if "klein" not in model and aspect not in ("1:1", None):
                 from PIL import Image

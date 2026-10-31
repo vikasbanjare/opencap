@@ -317,7 +317,7 @@ def make_router(DATA: Path, media_prefix: str = "/media", transcribe=None, local
         mask = out.path(".png"); Image.new("L", (512, 512), 0).save(mask)
         tests = {"llm": lambda: r.llm("Say ok.", provider=provider)[:60],
                  "json": lambda: json.dumps(r.llm_json("Cast a short sci-fi film set on a failing space station. Return {\"roles\": [{\"name\": str, \"casting\": str}]} with 3 roles, casting 40 words each.", provider=provider))[:400], "vision": lambda: r.llm("What colour is this?", images=[img], provider=provider)[:60],
-                 "image": lambda: r.image("a red apple on a table", aspect="1:1", provider=provider), "edit": lambda: r.image("make it orange", refs=[img], provider=provider),
+                 "image": lambda: r.image("a red apple on a table", aspect="3:4", seed=7, n=2, provider=provider), "edit": lambda: r.image("make it orange", refs=[img], provider=provider),
                  "video": lambda: r.video("waves on a beach", aspect="16:9", duration=2, provider=provider), "music": lambda: r.music("calm piano, instrumental", 10, provider=provider),
                  "sfx": lambda: r.sfx("door knock", 2, provider=provider), "upscale": lambda: r.upscale(img, 2, provider=provider),
                  "bg_remove": lambda: r.bg_remove(img, provider=provider), "tts": lambda: r.tts("Hello from Pulse Studio.", provider=provider),
