@@ -257,11 +257,17 @@ class Router:
     def llm_json(self, prompt: str, system: str = "", images=None, mock=None, **kw):
         txt = self.llm(prompt, system + "\nRespond with JSON only, no prose, no code fences.", True, images, mock=mock, **kw)
         txt = txt.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        def parse(t):
+            try:
+                return json.loads(t)
+            except json.JSONDecodeError:
+                s, e = min([i for i in (t.find("{"), t.find("[")) if i >= 0], default=0), max(t.rfind("}"), t.rfind("]"))
+                return json.loads(t[s:e + 1])
         try:
-            return json.loads(txt)
-        except json.JSONDecodeError:
-            s, e = min([i for i in (txt.find("{"), txt.find("[")) if i >= 0], default=0), max(txt.rfind("}"), txt.rfind("]"))
-            return json.loads(txt[s:e + 1])
+            return parse(txt)
+        except json.JSONDecodeError:  # one repair pass: small models sometimes add prose or cut off
+            fixed = self.llm("Turn this into valid JSON with the same content. Return only the JSON.\n\n" + txt[:20000], "", True, mock=mock, **kw)
+            return parse(fixed.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip())
 
     # media: each returns a list of Paths
     def image(self, prompt, aspect="1:1", n=1, refs=None, negative="", seed=None, **kw) -> list[Path]:
@@ -826,10 +832,17 @@ class Cloudflare:
         content: list | str = prompt + ("\nReturn valid JSON only." if json_mode else "")
         if images:
             content = [{"type": "text", "text": content}] + [{"type": "image_url", "image_url": {"url": data_uri(Cloudflare._small(r, p, 1024))}} for p in images[:6]]
-        body = {"model": model, "max_tokens": 4096, "messages": ([{"role": "system", "content": system}] if system else []) + [{"role": "user", "content": content}]}
-        res = http("POST", f"{base}/v1/chat/completions", h, body)
-        txt = res["choices"][0]["message"].get("content") or ""
-        return re.sub(r"<think>.*?</think>", "", txt, flags=re.S).strip()
+        # thinking off: otherwise Gemma 4 can spend the whole token budget reasoning and return empty content
+        body = {"model": model, "max_tokens": 8192, "chat_template_kwargs": {"enable_thinking": False},
+                "messages": ([{"role": "system", "content": system}] if system else []) + [{"role": "user", "content": content}]}
+        if json_mode:
+            body["response_format"] = {"type": "json_object"}
+        res = http("POST", f"{base}/v1/chat/completions", h, body, timeout=300)
+        ch = res["choices"][0]; msg = ch.get("message") or {}
+        txt = re.sub(r"<think>.*?</think>", "", msg.get("content") or "", flags=re.S).strip()
+        if not txt:  # raise so the router falls back to the free model instead of handing back nothing
+            raise ProviderError(f"cloudflare {model} returned no text (finish_reason={ch.get('finish_reason')})")
+        return txt
 
     @staticmethod
     def _small(r, p: Path, edge: int) -> Path:
