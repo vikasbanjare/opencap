@@ -100,6 +100,26 @@ def keep(r, src: str, ext: str | None = None) -> Path:
     dst = r.out.path(ext or Path(src).suffix or ".bin"); shutil.copy(src, dst); return dst
 
 
+# ---------- background removal on CPU (BiRefNet lite, MIT): no GPU quota at all ----------
+
+_bg = {"sess": None}
+
+
+def bg_remove_cpu(src: Path, dst: Path) -> Path:
+    import numpy as np
+    from PIL import Image
+    if _bg["sess"] is None:
+        import onnxruntime as ort
+        from huggingface_hub import hf_hub_download
+        _bg["sess"] = ort.InferenceSession(hf_hub_download("onnx-community/BiRefNet_lite-ONNX", "onnx/model.onnx"), providers=["CPUExecutionProvider"])
+    im = Image.open(src).convert("RGB")
+    x = (np.asarray(im.resize((1024, 1024)), dtype=np.float32) / 255 - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
+    y = _bg["sess"].run(None, {"input_image": x.transpose(2, 0, 1)[None].astype(np.float32)})[0][0, 0]
+    y = 1 / (1 + np.exp(-y)) if y.min() < 0 or y.max() > 1 else y  # logits on some exports
+    alpha = Image.fromarray((y * 255).clip(0, 255).astype("uint8")).resize(im.size)
+    out = im.convert("RGBA"); out.putalpha(alpha); out.save(dst); return dst
+
+
 # ---------- in-process LLM (Qwen3-VL-4B on ZeroGPU, else CPU) ----------
 
 _llm = {"model": None, "proc": None, "device": "cpu", "error": None}

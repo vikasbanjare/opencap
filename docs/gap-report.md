@@ -15,7 +15,7 @@ With no paid keys, every capability now runs at no cost on commercially usable o
 | Music, songs with lyrics | ACE-Step | Apache-2.0 |
 | Sound effects | TangoFlux, falling back to Stable Audio Open | Stability community (free under $1M revenue) |
 | Upscale | Finegrain image enhancer | MIT |
-| Background removal | BiRefNet | MIT |
+| Background removal | BiRefNet lite on this server's CPU (no GPU quota), BiRefNet Space as fallback | MIT |
 | Lip sync | LatentSync | Apache-2.0 |
 | Voice | Kokoro-82M, in this Space | Apache-2.0 |
 | Subtitles | faster-whisper, in this Space | MIT |

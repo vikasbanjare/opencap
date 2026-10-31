@@ -1026,7 +1026,10 @@ class Free:
     def bg_remove(r, model, image):
         from gradio_client import handle_file
         from . import free
-        return [free.keep(r, free.path_of(free.call(free.SPACES["bg_remove"], "/png", f=handle_file(str(image)))), ".png")]
+        try:  # CPU first: no GPU quota, a few seconds per image
+            return [free.bg_remove_cpu(Path(image), r.out.path(".png"))]
+        except Exception:
+            return [free.keep(r, free.path_of(free.call(free.SPACES["bg_remove"], "/png", f=handle_file(str(image)))), ".png")]
 
     @staticmethod
     def lipsync(r, model, video, audio):
