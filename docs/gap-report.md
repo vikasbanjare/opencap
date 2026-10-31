@@ -9,11 +9,11 @@ With no paid keys, every capability now runs at no cost on commercially usable o
 | Capability | Free engine | Licence |
 |---|---|---|
 | Text, scripts, plans, QC (vision) | Qwen3-VL-4B-Instruct, inside this Space on ZeroGPU | Apache-2.0 |
-| Images | FLUX.1-schnell (public ZeroGPU Space) | Apache-2.0 |
-| Image edit, inpaint, try-on, face swap | Qwen-Image-Edit (try-on and face swap use side-by-side panels; inpaint composites through your mask) | Apache-2.0 |
-| Video (text and image to video, up to 8.5 s) | LTX-Video 0.9.8 distilled | LTXV open weights (free under $10M revenue) |
+| Images | FLUX.1-schnell (a 10-second GPU Space, with the official Space as fallback) | Apache-2.0 |
+| Image edit, inpaint, try-on, face swap | FLUX.1 Kontext dev, falling back to Qwen-Image-Edit (try-on and face swap use side-by-side panels; inpaint composites through your mask) | Kontext outputs may be used commercially; Qwen Apache-2.0 |
+| Video (image to video up to 5 s; text to video draws a first frame) | Wan 2.2 I2V fast, falling back to LTX-Video distilled | Apache-2.0 / LTXV open weights |
 | Music, songs with lyrics | ACE-Step | Apache-2.0 |
-| Sound effects | Stable Audio Open | Stability community (free under $1M revenue) |
+| Sound effects | TangoFlux, falling back to Stable Audio Open | Stability community (free under $1M revenue) |
 | Upscale | Finegrain image enhancer | MIT |
 | Background removal | BiRefNet | MIT |
 | Lip sync | LatentSync | Apache-2.0 |
@@ -21,7 +21,7 @@ With no paid keys, every capability now runs at no cost on commercially usable o
 | Subtitles | faster-whisper, in this Space | MIT |
 
 Limits:
-- GPU time comes from Hugging Face's free daily ZeroGPU quota. Set `HF_TOKEN` as a Space secret to use your own account's quota.
+- GPU time comes from Hugging Face's free daily ZeroGPU quota (about 3 minutes a day on a free account). Each tool uses the Space that asks for the least GPU time per call. Rough cost per run: image 10 s, edit 30 s, SFX 15 s, video 30-40 s, music 60 s, lip sync 180 s (too much for a free account). Set `HF_TOKEN` as a Space secret to use your own account's quota.
 - Each public Space can be busy, sleep or change its API. When one fails, the job says so plainly and nothing is billed. Swapping a Space is one line in `SPACES`.
 - Quality is below Veo, Kling or GPT Image, most of all for video (short clips at about 768×448).
 - Add any paid key later and that capability switches to it automatically. The rest stay free.

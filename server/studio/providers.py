@@ -798,9 +798,10 @@ class Free:
         w, h = Free._dims(aspect)
         out = []
         for i in range(max(1, min(4, int(n)))):
-            res = free.call(free.SPACES["image"], "/infer", prompt=prompt + (f". Avoid: {negative}" if negative else ""), seed=int(seed or 0) + i,
-                            randomize_seed=seed is None, width=w, height=h, num_inference_steps=4)
-            out.append(free.keep(r, free.path_of(res), ".webp" if free.path_of(res).endswith(".webp") else None))
+            kw = dict(prompt=prompt + (f". Avoid: {negative}" if negative else ""), seed=int(seed or 0) + i, randomize_seed=seed is None,
+                      width=w, height=h, num_inference_steps=4)
+            res = free.first_ok(lambda: free.call(free.SPACES["image"], "/infer", **kw), lambda: free.call(free.FALLBACK["image"], "/infer", **kw))
+            out.append(free.keep(r, free.path_of(res)))
         return out
 
     @staticmethod
@@ -818,8 +819,11 @@ class Free:
     def _edit_one(r, image: Path, prompt: str) -> Path:
         from gradio_client import handle_file
         from . import free
-        res = free.call(free.SPACES["edit"], "/infer", image=handle_file(str(image)), prompt=prompt, seed=0, randomize_seed=True,
-                        true_guidance_scale=4.0, num_inference_steps=30, rewrite_prompt=False)
+        res = free.first_ok(
+            lambda: free.call(free.SPACES["edit"], "/infer", input_image=handle_file(str(image)), prompt=prompt, seed=0, randomize_seed=True,
+                              guidance_scale=2.5, steps=16),  # Kontext: 16 steps keeps the GPU reservation small
+            lambda: free.call(free.FALLBACK["edit"], "/infer", image=handle_file(str(image)), prompt=prompt, seed=0, randomize_seed=True,
+                              true_guidance_scale=4.0, num_inference_steps=30, rewrite_prompt=False))
         return free.keep(r, free.path_of(res))
 
     @staticmethod
@@ -853,7 +857,7 @@ class Free:
         return Free.edit(r, model, "replace the face of the person with the face shown in the second panel; keep the scene's lighting, pose, expression and hair", [target, face], "1:1", 1)
 
     @staticmethod
-    def video(r, model, prompt, image, aspect, duration, end_image, audio):
+    def _ltx(r, prompt, image, aspect, duration):
         from gradio_client import handle_file
         from . import free
         w, h = {"16:9": (768, 448), "9:16": (448, 768), "1:1": (576, 576), "4:5": (512, 640), "21:9": (896, 384), "4:3": (640, 480), "3:4": (480, 640)}.get(aspect, (768, 448))
@@ -861,9 +865,24 @@ class Free:
                   height_ui=h, width_ui=w, duration_ui=max(0.5, min(8.5, float(duration))), ui_frames_to_use=9, seed_ui=42, randomize_seed=True,
                   ui_guidance_scale=1, improve_texture_flag=True)
         if image:
-            res = free.call(free.SPACES["video"], "/image_to_video", input_image_filepath=handle_file(str(image)), mode="image-to-video", **kw)
-        else:
-            res = free.call(free.SPACES["video"], "/text_to_video", input_image_filepath=None, mode="text-to-video", **kw)
+            return free.call(free.FALLBACK["video"], "/image_to_video", input_image_filepath=handle_file(str(image)), mode="image-to-video", **kw)
+        return free.call(free.FALLBACK["video"], "/text_to_video", input_image_filepath=None, mode="text-to-video", **kw)
+
+    @staticmethod
+    def video(r, model, prompt, image, aspect, duration, end_image, audio):
+        """Wan 2.2 image-to-video (small GPU reservation). With no start image, FLUX draws the first frame."""
+        from gradio_client import handle_file
+        from PIL import Image
+        from . import free
+        def wan():
+            start = image or Free.image(r, model, prompt + ", cinematic film still", aspect, 1, "", None)[0]
+            src = Path(start)
+            if src.suffix.lower() not in (".png", ".jpg", ".jpeg"):
+                src = r.out.path(".png"); Image.open(start).convert("RGB").save(src)
+            return free.call(free.SPACES["video"], "/generate_video", input_image=handle_file(str(src)), prompt=prompt,
+                             steps=4, duration_seconds=max(0.5, min(5.0, float(duration))), guidance_scale=1, guidance_scale_2=1,
+                             seed=42, randomize_seed=True)
+        res = free.first_ok(wan, lambda: Free._ltx(r, prompt, image, aspect, duration))
         return [free.keep(r, free.path_of(res), ".mp4")]
 
     @staticmethod
@@ -872,7 +891,7 @@ class Free:
         instrumental = "instrumental" in prompt.lower() and "lyrics:" not in prompt.lower()
         lyrics = prompt.split("Lyrics:", 1)[1].strip() if "Lyrics:" in prompt else "[instrumental]"
         res = free.call(free.SPACES["music"], "/__call__", audio_duration=float(max(5, min(240, duration))), prompt=prompt.split("Lyrics:", 1)[0][:600],
-                        lyrics="[instrumental]" if instrumental else lyrics, infer_step=60, guidance_scale=15.0, scheduler_type="euler", cfg_type="apg",
+                        lyrics="[instrumental]" if instrumental else lyrics, infer_step=27, guidance_scale=15.0, scheduler_type="euler", cfg_type="apg",
                         omega_scale=10.0, manual_seeds=None, guidance_interval=0.5, guidance_interval_decay=0.0, min_guidance_scale=3.0,
                         use_erg_tag=True, use_erg_lyric=False, use_erg_diffusion=True, oss_steps=None, guidance_scale_text=0.0,
                         guidance_scale_lyric=0.0, audio2audio_enable=False, ref_audio_strength=0.5, ref_audio_input=None, lora_name_or_path="none")
@@ -881,7 +900,9 @@ class Free:
     @staticmethod
     def sfx(r, model, prompt, duration):
         from . import free
-        res = free.call(free.SPACES["sfx"], "/predict", prompt=prompt, seconds_total=float(max(1, min(47, duration))), steps=60, cfg_scale=7)
+        res = free.first_ok(
+            lambda: free.call(free.SPACES["sfx"], "/predict", prompt=prompt, steps=25, guidance=4.5, duration=float(max(1, min(30, round(duration))))),
+            lambda: free.call(free.FALLBACK["sfx"], "/predict", prompt=prompt, seconds_total=float(max(1, min(47, duration))), steps=60, cfg_scale=7))
         return [free.keep(r, free.path_of(res))]
 
     @staticmethod

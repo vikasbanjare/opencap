@@ -5,11 +5,13 @@ quota, the Space owner's when HF_TOKEN is set as a Space secret); text and image
 on this Space's own ZeroGPU (or CPU when there is no GPU); voice is the local Kokoro model. All model licences
 below allow commercial use (LTX-Video: free under $10M annual revenue; Stable Audio Open: free under $1M).
 
-  image      black-forest-labs/FLUX.1-schnell          Apache-2.0
-  edit       Qwen/Qwen-Image-Edit                      Apache-2.0   (also inpaint, try-on, face swap via panels)
-  video      Lightricks/ltx-video-distilled            LTXV open weights
+  image      evalstate/flux1_schnell (10 s GPU), then black-forest-labs/FLUX.1-schnell   Apache-2.0
+  edit       mcp-tools/FLUX.1-Kontext-Dev (about 30 s GPU), then Qwen/Qwen-Image-Edit
+             (also inpaint, try-on, face swap via panels). Kontext weights are non-commercial but BFL lets you use outputs commercially.
+  video      zerogpu-aoti/wan2-2-fp8da-aoti-faster (Wan 2.2 I2V, about 20-30 s GPU; text-to-video makes a FLUX first frame),
+             then Lightricks/ltx-video-distilled                                          Apache-2.0 / LTXV open weights
   music      ACE-Step/ACE-Step                         Apache-2.0
-  sfx        artificialguybr/Stable-Audio-Open-Zero    Stability community licence
+  sfx        declare-lab/TangoFlux (15 s GPU), then artificialguybr/Stable-Audio-Open-Zero   Stability community licence
   upscale    finegrain/finegrain-image-enhancer        refiners (MIT)
   bg_remove  not-lain/background-removal (BiRefNet)    MIT
   lipsync    fffiloni/LatentSync                       Apache-2.0
@@ -23,9 +25,13 @@ from __future__ import annotations
 import os, shutil, threading
 from pathlib import Path
 
-SPACES = {"image": "black-forest-labs/FLUX.1-schnell", "edit": "Qwen/Qwen-Image-Edit", "video": "Lightricks/ltx-video-distilled",
-          "music": "ACE-Step/ACE-Step", "sfx": "artificialguybr/Stable-Audio-Open-Zero", "upscale": "finegrain/finegrain-image-enhancer",
+# The first Space of each capability asks ZeroGPU for the least GPU time (a free account gets about 3 minutes a day and each
+# call reserves its declared duration up front), the second is the fallback.
+SPACES = {"image": "evalstate/flux1_schnell", "edit": "mcp-tools/FLUX.1-Kontext-Dev", "video": "zerogpu-aoti/wan2-2-fp8da-aoti-faster",
+          "music": "ACE-Step/ACE-Step", "sfx": "declare-lab/TangoFlux", "upscale": "finegrain/finegrain-image-enhancer",
           "bg_remove": "not-lain/background-removal", "lipsync": "fffiloni/LatentSync"}
+FALLBACK = {"image": "black-forest-labs/FLUX.1-schnell", "edit": "Qwen/Qwen-Image-Edit", "video": "Lightricks/ltx-video-distilled",
+            "sfx": "artificialguybr/Stable-Audio-Open-Zero"}
 LLM_MODEL = os.environ.get("OPENCAP_FREE_LLM", "Qwen/Qwen3-VL-4B-Instruct")
 LOCAL_TTS = None  # set by main.py: (text, voice, speed) -> Path (Kokoro)
 
@@ -59,6 +65,17 @@ def call(space: str, api: str, **kw):
                     if os.environ.get("HF_TOKEN") else "try later, add HF_TOKEN as a Space secret, or add a provider key")
             msg = f"the free GPU quota is used up for now (it refills daily); {hint} [{msg[:160]}]"
         raise ProviderError(f"free {space}: {msg[:300]}")
+
+
+def first_ok(*attempts):
+    """Run (fn, args) pairs in turn; return the first result, raise the first error if all fail."""
+    first = None
+    for fn in attempts:
+        try:
+            return fn()
+        except Exception as e:
+            first = first or e
+    raise first
 
 
 def path_of(res) -> str:
@@ -107,6 +124,12 @@ def load_llm():
         _llm["error"] = f"{type(e).__name__}: {e}"
 
 
+def _gpu_seconds(messages: list, max_new_tokens: int) -> int:
+    """Reserve only what the answer needs (about 40 tokens/s on a 4B model) so short calls cost little free quota."""
+    images = sum(1 for m in messages for c in m["content"] if c.get("type") == "image")
+    return int(min(90, 8 + max_new_tokens / 40 + 3 * images))
+
+
 def _generate(messages: list, max_new_tokens: int) -> str:
     model, proc = _llm["model"], _llm["proc"]
     enc = proc.apply_chat_template(messages, add_generation_prompt=True, tokenize=True, return_dict=True, return_tensors="pt").to(model.device)
@@ -116,7 +139,7 @@ def _generate(messages: list, max_new_tokens: int) -> str:
 
 try:  # on a ZeroGPU Space the generate call borrows a GPU for its duration
     import spaces
-    _generate = spaces.GPU(duration=90)(_generate)
+    _generate = spaces.GPU(duration=_gpu_seconds)(_generate)
 except Exception:
     pass
 
@@ -135,4 +158,4 @@ def chat(prompt: str, system: str = "", images: list[Path] | None = None, max_ne
 
 def status() -> dict:
     return {"enabled": enabled(), "llm": LLM_MODEL, "llm_loaded": _llm["model"] is not None, "llm_device": _llm["device"],
-            "llm_error": _llm["error"], "hf_token": bool(os.environ.get("HF_TOKEN")), "spaces": SPACES, "kokoro": LOCAL_TTS is not None}
+            "llm_error": _llm["error"], "hf_token": bool(os.environ.get("HF_TOKEN")), "spaces": SPACES, "fallback": FALLBACK, "kokoro": LOCAL_TTS is not None}
