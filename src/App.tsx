@@ -7,11 +7,21 @@ import { Icon } from './ui/icons'
 import { Brand } from './ui/Logo'
 import { StyleThumb } from './editor/StyleThumb'
 import { PRESETS, presetById } from './captions/presets'
+import { Studio } from './studio/Studio'
 
 // Start screen follows the "composer" flow: add footage, pick a look, create.
 const FEATURED = ['prism-pro', 'paper-ii', 'prime', 'beast', 'karaoke', 'hype', 'highlighter', 'editorial', 'typewriter', 'comic', 'wave', 'impact-ii', 'glow-up', 'retro', 'neon', 'elevate']
 
+// Studio (the tool suite) is the landing page; the captions editor lives at ?app=editor (and ?p=<project>).
 export default function App() {
+  const [app, setApp] = useState(() => { const q = new URLSearchParams(location.search); return q.get('app') === 'editor' || q.get('p') ? 'editor' : 'studio' })
+  useEffect(() => { const f = () => { const q = new URLSearchParams(location.search); setApp(q.get('app') === 'editor' || q.get('p') ? 'editor' : 'studio') }; addEventListener('popstate', f); return () => removeEventListener('popstate', f) }, [])
+  const goto = (a: 'editor' | 'studio') => { const u = new URL(location.origin + location.pathname); if (a === 'editor') u.searchParams.set('app', 'editor'); history.pushState(null, '', u); setApp(a) }
+  if (app === 'studio') return <Studio onOpenEditor={() => goto('editor')} />
+  return <PulseHome onStudio={() => goto('studio')} />
+}
+
+function PulseHome({ onStudio }: { onStudio: () => void }) {
   const [projects, setProjects] = useState<ProjectMeta[]>([])
   const [open, setOpen] = useState<ProjectMeta | null>(null)
   const [upl, setUpl] = useState<number | null>(null)
@@ -49,6 +59,7 @@ export default function App() {
     <div className="home">
       <nav className="home-nav">
         <Brand size={26} />
+        <button className="pill" onClick={onStudio}>← All Studio tools</button>
         <span className="pill">Free · private · runs on your Mac</span>
       </nav>
       <section className="hero">
