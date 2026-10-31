@@ -18,6 +18,7 @@ from pathlib import Path
 from PIL import Image
 
 from . import media as M
+from .providers import ProviderError
 from .tools import (CAST_STYLES, GEMINI_VOICES, MOVES, VIDEO_STYLES, C, F, J, S, T, ToolError, fdx, model_field, route, srt, tool, write_ass)
 
 FILM = F("film", "Film project", "film", required=True)
@@ -200,41 +201,65 @@ def _sel(spec: str, n: int) -> list[int]:
        F("seconds", "Seconds per shot", "slider", min=2, max=10, default=4), F("animate", "Animate shots (image-to-video)", "toggle", default=True),
        F("dialogue", "Voice the dialogue", "toggle", default=True), F("lipsync", "Lip-sync close-ups", "toggle", default=False),
        S("look", "Look", VIDEO_STYLES, "Cinematic realism"), C("moves", "Preferred camera moves", MOVES, default=["Slow Push In", "Dolly In", "Static"]),
+       F("restart", "Start these scenes over", "toggle", default=False, help="Off: finished shots are kept and the run continues where it stopped"),
        model_field("video", "Video model")],
-      ["video", "image", "json"], ["llm", "image", "video", "tts", "lipsync"])
-def film_scenes(ctx, film, which, shots, seconds, animate, dialogue, lipsync, look, moves, model):
+      ["video", "image", "json", "text"], ["llm", "image", "video", "tts", "lipsync"])
+def film_scenes(ctx, film, which, shots, seconds, animate, dialogue, lipsync, look, moves, model, restart=False):
     f = ctx.store.film(film)
     if not f.get("scenes"):
         raise ToolError("Write the script first (stage 1)")
     cast = {c["name"].upper(): c for c in f.get("cast", [])}
     ar = f.get("aspect", "16:9"); W, H = {"9:16": (1080, 1920), "1:1": (1080, 1080), "4:5": (1080, 1350), "21:9": (1920, 822)}.get(ar, (1920, 1080))
-    out, cuts = [], []
+    out, cuts, notes = [], [], []
     for n in _sel(which, len(f["scenes"])):
         sc = f["scenes"][n - 1]
         ids = [cast[d["character"].upper()]["characterId"] for d in sc["dialogue"] if d["character"].upper() in cast]
         ids += [c["characterId"] for k, c in cast.items() if re.search(rf"\b{re.escape(k)}\b", sc["action"].upper()) and c["characterId"] not in ids]
-        ctx.progress(f"Scene {n}: shot breakdown")
-        sents = [x for x in re.split(r"(?<=[.!?])\s+", sc["action"]) if x.strip()] or [sc["heading"]]
-        mock = {"shots": [{"shot": ["Wide Establishing Shot", "Medium Shot", "Close-Up", "Over-the-Shoulder", "Two-Shot", "Insert Shot"][k % 6], "description": sents[k % len(sents)],
-                           "camera": moves[k % len(moves)] if moves else "Static", "characters": [d["character"] for d in sc["dialogue"]][:2], "seconds": seconds} for k in range(int(shots))]}
-        r = ctx.router.llm_json(f"Scene {sc['heading']}\nAction: {sc['action']}\nDialogue: {json.dumps(sc['dialogue'], ensure_ascii=False)}\n"
-                                f"Break into exactly {int(shots)} shots for a {f.get('genre', '')} film, {look}. Respect the 180° rule; open wide, cover dialogue with singles/OTS. "
-                                f"Prefer these moves: {', '.join(moves)}. JSON: {{\"shots\":[{{\"shot\":\"size/angle\",\"description\":\"what we see\",\"camera\":\"movement\",\"characters\":[\"NAME\"],\"seconds\":n}}]}}",
-                                "You are a director of photography.", mock=mock)
+        wip = sc.get("wip") or {}
+        if restart or wip.get("shots") != int(shots) or wip.get("seconds") != seconds:
+            wip = {"shots": int(shots), "seconds": seconds, "plan": None, "done": {}}
+        if wip["plan"]:
+            r = wip["plan"]; ctx.progress(f"Scene {n}: continuing from saved shots")
+        else:
+            ctx.progress(f"Scene {n}: shot breakdown")
+            sents = [x for x in re.split(r"(?<=[.!?])\s+", sc["action"]) if x.strip()] or [sc["heading"]]
+            mock = {"shots": [{"shot": ["Wide Establishing Shot", "Medium Shot", "Close-Up", "Over-the-Shoulder", "Two-Shot", "Insert Shot"][k % 6], "description": sents[k % len(sents)],
+                               "camera": moves[k % len(moves)] if moves else "Static", "characters": [d["character"] for d in sc["dialogue"]][:2], "seconds": seconds} for k in range(int(shots))]}
+            r = ctx.router.llm_json(f"Scene {sc['heading']}\nAction: {sc['action']}\nDialogue: {json.dumps(sc['dialogue'], ensure_ascii=False)}\n"
+                                    f"Break into exactly {int(shots)} shots for a {f.get('genre', '')} film, {look}. Respect the 180° rule; open wide, cover dialogue with singles/OTS. "
+                                    f"Prefer these moves: {', '.join(moves)}. JSON: {{\"shots\":[{{\"shot\":\"size/angle\",\"description\":\"what we see\",\"camera\":\"movement\",\"characters\":[\"NAME\"],\"seconds\":n}}]}}",
+                                    "You are a director of photography.", mock=mock)
+            wip["plan"] = r
+        sc["wip"] = wip; ctx.store.save_film(f)  # every finished step is saved, so a failed run can continue
         clips, shot_rows = [], []
         for k, s in enumerate(r["shots"][: int(shots)]):
             ctx.progress(f"Scene {n} · shot {k + 1}/{len(r['shots'])}")
-            who = [cast[c.upper()]["characterId"] for c in s.get("characters", []) if c.upper() in cast] or ids
-            prompt, refs = ctx.cast(f"{s['shot']}. {sc['heading']}. {s['description']}. {look}, {f.get('genre', '')} film, cinematic lighting, consistent production design.", who[:3])
-            frame = ctx.router.image(prompt, aspect=ar, refs=refs or None, seed=n * 100 + k)[0]
             dur = float(s.get("seconds") or seconds)
-            if animate:
-                v = ctx.router.video(prompt + f". Camera: {s.get('camera', 'Static')}.", image=frame, aspect=ar, duration=max(2, round(dur)), audio=False, **route(model))[0]
-                clips.append(M.norm_clip(v, ctx.file(".mp4"), W, H, dur=dur))
-            else:
-                clips.append(M.still_clip(frame, ctx.file(".mp4"), W, H, dur=dur))
-            shot_rows.append({**s, "frame": ctx.url_of(frame)})
-            out.append((f"Scene {n} · shot {k + 1} · {s['shot']}", frame))
+            d = wip["done"].get(str(k), {})
+            frame, clip = _saved(ctx, d.get("frame")), _saved(ctx, d.get("clip"))
+            if not clip or (animate and not d.get("animated")):
+                who = [cast[c.upper()]["characterId"] for c in s.get("characters", []) if c.upper() in cast] or ids
+                prompt, refs = ctx.cast(f"{s['shot']}. {sc['heading']}. {s['description']}. {look}, {f.get('genre', '')} film, cinematic lighting, consistent production design.", who[:3])
+                if not frame:
+                    try:
+                        frame = ctx.router.image(prompt, aspect=ar, refs=refs or None, seed=n * 100 + k)[0]
+                    except ProviderError as e:
+                        raise ToolError(f"Scene {n} shot {k + 1}: could not draw the key frame ({e}). Your finished shots are saved: press Generate again later to continue from here.")
+                    d = {"frame": ctx.url_of(frame)}; wip["done"][str(k)] = d; ctx.store.save_film(f)
+                animated = False
+                if animate:
+                    try:
+                        v = ctx.router.video(prompt + f". Camera: {s.get('camera', 'Static')}.", image=frame, aspect=ar, duration=max(2, round(dur)), audio=False, **route(model))[0]
+                        clip = M.norm_clip(v, ctx.file(".mp4"), W, H, dur=dur); animated = True
+                    except ProviderError as e:  # free video quota used up: keep going with a moving still, animate later
+                        notes.append(f"Scene {n} shot {k + 1}: {str(e)[:160]}")
+                        ctx.progress(f"Scene {n} · shot {k + 1}: video unavailable, using a moving still")
+                if not animated:
+                    clip = _drift(ctx, frame, W, H, dur)
+                d.update(clip=ctx.url_of(clip), animated=animated); wip["done"][str(k)] = d; ctx.store.save_film(f)
+            clips.append(clip)
+            shot_rows.append({**s, "frame": d.get("frame"), "animated": d.get("animated", False)})
+            out.append((f"Scene {n} · shot {k + 1} · {s['shot']}" + ("" if d.get("animated") or not animate else " (still)"), frame))
         cut = M.concat(clips, ctx.file(".mp4"))
         lines = []
         if dialogue and sc["dialogue"]:
@@ -256,8 +281,30 @@ def film_scenes(ctx, film, which, shots, seconds, animate, dialogue, lipsync, lo
         cuts.append((f"Scene {n} · {sc['heading']}", cut))
     f["final"] = None
     ctx.store.save_film(f)
+    if notes:
+        cuts.insert(0, T(f"{len(notes)} shot(s) use a moving still because video generation was unavailable (usually the free daily GPU quota). "
+                         "Everything is saved: run Scenes again later with the same settings and only those shots are animated.\n\n" + "\n".join(notes), "Note"))
     return cuts + out + [J([{"#": s["n"], "Scene": s["heading"], "Cut": "✓" if s.get("cut") else "—", "Seconds": s.get("duration", "")} for s in f["scenes"]], "Scene status",
                     next={"tool": "film_score", "set": {"film": film}, "label": "Next: score it →"})]
+
+
+def _saved(ctx, url):
+    """A saved file from an earlier run, or None if it is missing."""
+    if not url:
+        return None
+    try:
+        return ctx.path_of(url)
+    except Exception:
+        return None
+
+
+def _drift(ctx, img: Path, w: int, h: int, dur: float) -> Path:
+    """A key frame with a slow push-in, standing in for a video clip."""
+    out = ctx.file(".mp4"); fr = max(2, int(dur * 30))
+    M.sh(["ffmpeg", "-v", "error", "-y", "-loop", "1", "-i", str(img), "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", "-t", f"{dur:.3f}",
+          "-vf", f"scale={w * 2}:{h * 2}:force_original_aspect_ratio=increase,crop={w * 2}:{h * 2},zoompan=z='1+0.06*on/{fr}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={fr}:s={w}x{h}:fps=30,setsar=1,format=yuv420p",
+          "-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac", "-ar", "48000", "-ac", "2", "-shortest", str(out)])
+    return out
 
 
 def _lay(ctx, tracks: list[tuple[float, Path]], total: float) -> Path:

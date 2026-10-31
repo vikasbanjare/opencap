@@ -236,12 +236,15 @@ class Router:
         t = time.time()
         try:
             res = fn(self, mdl, *a, **kw)
-        except ProviderError:
+        except ProviderError as e1:
             # Cloudflare's daily free Neurons ran out (or it is down): fall through to the free Spaces
             alt = getattr(Free, fn_name, None)
             if prov != "cloudflare" or not alt or not self.s.key("free") or cap not in MODELS["free"]:
                 raise
-            prov, mdl, res = "free", MODELS["free"][cap][0], alt(self, MODELS["free"][cap][0], *a, **kw)
+            try:
+                prov, mdl, res = "free", MODELS["free"][cap][0], alt(self, MODELS["free"][cap][0], *a, **kw)
+            except ProviderError as e2:
+                raise ProviderError(f"Cloudflare failed ({str(e1)[:200]}), then the free fallback failed ({str(e2)[:200]})")
         self.last = {"cap": cap, "provider": prov, "model": mdl, "seconds": round(time.time() - t, 2), "usd": 0 if prov in FREE_PROVIDERS else COST[cap]}
         self.log(dict(self.last))
         return res
@@ -857,7 +860,7 @@ class Cloudflare:
 
     @staticmethod
     def image(r, model, prompt, aspect, n, negative, seed):
-        p = prompt + (f". Avoid: {negative}" if negative else "")
+        p = (prompt + (f". Avoid: {negative}" if negative else ""))[:2000]  # flux-1-schnell caps prompts at 2048 chars
         out = []
         for i in range(max(1, min(4, int(n)))):
             if "klein" in model:
@@ -881,6 +884,7 @@ class Cloudflare:
         W, H = max(256, int(w * s) // 16 * 16), max(256, int(h * s) // 16 * 16)
         files = {f"input_image_{i}": [Cloudflare._small(r, p, 504)] for i, p in enumerate(refs[:4])}
         lead = "Edit image 0" + (f" using images 1-{len(refs[:4]) - 1} as references" if len(refs) > 1 else "") + ": "
+        prompt = prompt[:1900]
         return [r.out.save(base64.b64decode(Cloudflare._run(r, model, form={"prompt": lead + prompt, "width": W, "height": H}, files=files)["image"]), ".jpg")
                 for _ in range(max(1, min(4, int(n))))]
 
