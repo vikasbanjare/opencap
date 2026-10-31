@@ -16,8 +16,17 @@ export function visible(f: Field, values: Record<string, unknown>) {
 export function FieldInput({ f, value, onChange, characters, values }: { f: Field; value: unknown; onChange: (v: unknown) => void; characters: Character[]; values: Record<string, unknown> }) {
   const v = value ?? f.default ?? ''
   switch (f.type) {
-    case 'textarea':
-      return <textarea rows={f.id === 'script' || f.id === 'story' ? 9 : 4} value={String(v)} placeholder={f.placeholder} onChange={e => onChange(e.target.value)} />
+    case 'textarea': {
+      const add = (s: string) => onChange(`${String(v ?? '')}${String(v ?? '').trim() ? (s.startsWith('[') ? '\n' : ', ') : ''}${s}`)
+      const mentions = ['prompt', 'scene', 'story', 'topic', 'brief'].includes(f.id) ? characters.map(c => `@${c.name}`) : []
+      return <>
+        <textarea rows={f.id === 'script' || f.id === 'story' ? 9 : 4} value={String(v)} placeholder={f.placeholder} onChange={e => onChange(e.target.value)} />
+        {(f.snippets?.length || mentions.length) ? <div className="chips snippets">
+          {f.snippets?.map(s => <button type="button" key={s} className="chip-btn" onClick={() => add(s)}>+ {s.replace(/: $/, '')}</button>)}
+          {mentions.map(m => <button type="button" key={m} className="chip-btn" title="Insert this locked character" onClick={() => add(m)}>{m}</button>)}
+        </div> : null}
+      </>
+    }
     case 'select':
       return <select value={String(v)} onChange={e => onChange(e.target.value)}>{f.options?.map(o => { const x = opt(o); return <option key={x.value} value={x.value}>{x.label}</option> })}</select>
     case 'chips': {

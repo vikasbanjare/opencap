@@ -6,12 +6,16 @@ os.environ.setdefault("OPENCAP_WHISPER", "small")  # ponytail: small keeps CPU t
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "server"))
 
-try:  # ZeroGPU wants at least one GPU function before it will start a Space; Pulse never calls it
+try:  # ZeroGPU wants at least one GPU function before it will start a Space
     import spaces
 
     @spaces.GPU
     def _gpu_probe():
         return "ok"
+
+    # Studio's free text/vision model registers its GPU function and places its weights before ZeroGPU starts
+    from studio import free as _free
+    _free.load_llm()
 
     if hasattr(spaces, "zero") and hasattr(spaces.zero, "startup"):
         spaces.zero.startup()  # normally run by gr.Blocks.launch, which we skip; reports the GPU function to ZeroGPU

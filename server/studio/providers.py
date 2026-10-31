@@ -54,10 +54,15 @@ MODELS: dict[str, dict[str, list[str]]] = {  # verified 2026-10-28, see docs/pro
     "elevenlabs": {"tts": ["eleven_multilingual_v2", "eleven_v3", "eleven_flash_v2_5"], "music": ["music_v2_5", "music_v2", "music_v1"], "sfx": ["eleven_text_to_sound_v2"]},
     "replicate": {"image": ["black-forest-labs/flux-schnell", "black-forest-labs/flux-1.1-pro"], "video": ["kwaivgi/kling-v3-video", "minimax/hailuo-2.3", "kwaivgi/kling-v2.1"],
                   "upscale": ["nightmareai/real-esrgan"], "bg_remove": ["bria/remove-background", "recraft-ai/recraft-remove-background"]},
+    # free: public ZeroGPU Spaces + in-process Qwen3-VL and Kokoro (see free.py); no key, daily GPU quota
+    "free": {"llm": ["Qwen3-VL-4B (this Space)"], "vision": ["Qwen3-VL-4B (this Space)"], "image": ["FLUX.1-schnell"], "edit": ["Qwen-Image-Edit"],
+             "inpaint": ["Qwen-Image-Edit + mask"], "tryon": ["Qwen-Image-Edit panels"], "faceswap": ["Qwen-Image-Edit panels"], "video": ["LTX-Video 0.9.8 distilled"],
+             "music": ["ACE-Step"], "sfx": ["Stable Audio Open"], "upscale": ["Finegrain enhancer"], "bg_remove": ["BiRefNet"], "lipsync": ["LatentSync"],
+             "tts": ["Kokoro-82M (this Space)"], "video_upscale": ["ffmpeg lanczos (local)"]},
     "mock": {c: ["placeholder"] for c in CAPS},
 }
-KEY_ENV = {"fal": "FAL_KEY", "openai": "OPENAI_API_KEY", "gemini": "GEMINI_API_KEY", "elevenlabs": "ELEVENLABS_API_KEY", "replicate": "REPLICATE_API_TOKEN"}
-ORDER = ["fal", "openai", "gemini", "elevenlabs", "replicate"]
+KEY_ENV = {"free": "HF_TOKEN", "fal": "FAL_KEY", "openai": "OPENAI_API_KEY", "gemini": "GEMINI_API_KEY", "elevenlabs": "ELEVENLABS_API_KEY", "replicate": "REPLICATE_API_TOKEN"}
+ORDER = ["fal", "openai", "gemini", "elevenlabs", "replicate", "free"]  # free last: paid keys win when present
 # which provider is preferred per capability when several are configured
 PREFER = {"llm": ["openai", "gemini", "fal"], "vision": ["openai", "gemini"], "tts": ["elevenlabs", "gemini", "fal", "openai"],
           "music": ["elevenlabs", "fal"], "sfx": ["elevenlabs", "fal"], "image": ["fal", "openai", "gemini", "replicate"],
@@ -108,6 +113,9 @@ class Settings:
         self.file.write_text(json.dumps(s, indent=1))
 
     def key(self, provider: str) -> str | None:
+        if provider == "free":  # needs no key; HF_TOKEN only raises the GPU quota
+            from . import free
+            return "on" if free.enabled() else None
         return self.load().get("keys", {}).get(provider) or os.environ.get(KEY_ENV.get(provider, "_"))
 
     def configured(self) -> list[str]:
@@ -126,7 +134,7 @@ class Settings:
 
     def public(self) -> dict:
         s = self.load()
-        return {"providers": [{"id": p, "env": KEY_ENV[p], "configured": bool(self.key(p)), "fromEnv": bool(os.environ.get(KEY_ENV[p])),
+        return {"providers": [{"id": p, "env": KEY_ENV[p], "configured": bool(self.key(p)), "fromEnv": bool(os.environ.get(KEY_ENV[p])) or p == "free",
                                "caps": list(MODELS[p])} for p in ORDER],
                 "caps": [{"id": c, "label": CAP_LABEL[c], "route": s.get("routes", {}).get(c) or {"provider": "auto"},
                           "active": dict(zip(["provider", "model"], self.route(c))),
@@ -220,7 +228,7 @@ class Router:
             prov, mdl, fn = "mock", "placeholder", getattr(Mock, fn_name)
         t = time.time()
         res = fn(self, mdl, *a, **kw)
-        self.last = {"cap": cap, "provider": prov, "model": mdl, "seconds": round(time.time() - t, 2), "usd": 0 if prov == "mock" else COST[cap]}
+        self.last = {"cap": cap, "provider": prov, "model": mdl, "seconds": round(time.time() - t, 2), "usd": 0 if prov in ("mock", "free") else COST[cap]}
         self.log(dict(self.last))
         return res
 
@@ -771,4 +779,144 @@ def _hsv(h, s, v):
     return tuple(int(c * 255) for c in colorsys.hsv_to_rgb(h / 360, s, v))
 
 
-PROVIDERS = {"fal": Fal, "openai": OpenAI, "gemini": Gemini, "elevenlabs": ElevenLabs, "replicate": Replicate, "mock": Mock}
+class Free:
+    """No-cost provider: public ZeroGPU Spaces for media, in-process Qwen3-VL for text/vision, Kokoro for voice."""
+
+    @staticmethod
+    def _dims(aspect, cap=1024, mult=32):
+        w, h = ASPECTS.get(aspect, (1024, 1024)); s = min(1.0, cap / max(w, h))
+        return int(w * s) // mult * mult, int(h * s) // mult * mult
+
+    @staticmethod
+    def llm(r, model, prompt, system, json_mode, images):
+        from . import free
+        return free.chat(prompt + ("\nReturn valid JSON only." if json_mode else ""), system, images)
+
+    @staticmethod
+    def image(r, model, prompt, aspect, n, negative, seed):
+        from . import free
+        w, h = Free._dims(aspect)
+        out = []
+        for i in range(max(1, min(4, int(n)))):
+            res = free.call(free.SPACES["image"], "/infer", prompt=prompt + (f". Avoid: {negative}" if negative else ""), seed=int(seed or 0) + i,
+                            randomize_seed=seed is None, width=w, height=h, num_inference_steps=4)
+            out.append(free.keep(r, free.path_of(res), ".webp" if free.path_of(res).endswith(".webp") else None))
+        return out
+
+    @staticmethod
+    def _panels(r, paths: list[Path]) -> tuple[Path, list[tuple[int, int, int, int]]]:
+        """Several references side by side in one image (Qwen-Image-Edit takes one); returns the boxes."""
+        from PIL import Image
+        ims = [Image.open(p).convert("RGB") for p in paths]
+        H = 768; ims = [im.resize((max(1, int(im.width * H / im.height)), H)) for im in ims]
+        W = sum(im.width for im in ims); sheet = Image.new("RGB", (W, H), "white"); boxes, x = [], 0
+        for im in ims:
+            sheet.paste(im, (x, 0)); boxes.append((x, 0, x + im.width, H)); x += im.width
+        p = r.out.path(".png"); sheet.save(p); return p, boxes
+
+    @staticmethod
+    def _edit_one(r, image: Path, prompt: str) -> Path:
+        from gradio_client import handle_file
+        from . import free
+        res = free.call(free.SPACES["edit"], "/infer", image=handle_file(str(image)), prompt=prompt, seed=0, randomize_seed=True,
+                        true_guidance_scale=4.0, num_inference_steps=30, rewrite_prompt=False)
+        return free.keep(r, free.path_of(res))
+
+    @staticmethod
+    def edit(r, model, prompt, refs, aspect, n):
+        from PIL import Image
+        if len(refs) == 1:
+            return [Free._edit_one(r, refs[0], prompt) for _ in range(max(1, min(4, int(n))))]
+        sheet, boxes = Free._panels(r, refs)
+        out = []
+        for _ in range(max(1, min(4, int(n)))):
+            res = Free._edit_one(r, sheet, f"The image is {len(refs)} panels side by side: the leftmost is the base to edit, the others are references. "
+                                         f"Edit only the leftmost panel: {prompt}. Keep every panel's layout.")
+            im = Image.open(res); sx = im.width / Image.open(sheet).width; x0, y0, x1, y1 = boxes[0]
+            crop = im.crop((int(x0 * sx), 0, int(x1 * sx), im.height)); p = r.out.path(".png"); crop.save(p); out.append(p)
+        return out
+
+    @staticmethod
+    def inpaint(r, model, image, mask, prompt):
+        from PIL import Image, ImageFilter
+        res = Free._edit_one(r, image, f"{prompt}. Change only what the instruction asks; keep everything else identical.")
+        src = Image.open(image).convert("RGB"); new = Image.open(res).convert("RGB").resize(src.size)
+        m = Image.open(mask).convert("L").resize(src.size).filter(ImageFilter.GaussianBlur(6))
+        src.paste(new, (0, 0), m); p = r.out.path(".png"); src.save(p); return [p]
+
+    @staticmethod
+    def tryon(r, model, person, garment):
+        return Free.edit(r, model, "dress the person in the garment shown in the second panel, matching its colour, fabric and cut; keep the face, pose and background", [person, garment], "3:4", 1)
+
+    @staticmethod
+    def faceswap(r, model, target, face):
+        return Free.edit(r, model, "replace the face of the person with the face shown in the second panel; keep the scene's lighting, pose, expression and hair", [target, face], "1:1", 1)
+
+    @staticmethod
+    def video(r, model, prompt, image, aspect, duration, end_image, audio):
+        from gradio_client import handle_file
+        from . import free
+        w, h = {"16:9": (768, 448), "9:16": (448, 768), "1:1": (576, 576), "4:5": (512, 640), "21:9": (896, 384), "4:3": (640, 480), "3:4": (480, 640)}.get(aspect, (768, 448))
+        kw = dict(prompt=prompt, negative_prompt="worst quality, inconsistent motion, blurry, jittery, distorted", input_video_filepath=None,
+                  height_ui=h, width_ui=w, duration_ui=max(0.5, min(8.5, float(duration))), ui_frames_to_use=9, seed_ui=42, randomize_seed=True,
+                  ui_guidance_scale=1, improve_texture_flag=True)
+        if image:
+            res = free.call(free.SPACES["video"], "/image_to_video", input_image_filepath=handle_file(str(image)), mode="image-to-video", **kw)
+        else:
+            res = free.call(free.SPACES["video"], "/text_to_video", input_image_filepath=None, mode="text-to-video", **kw)
+        return [free.keep(r, free.path_of(res), ".mp4")]
+
+    @staticmethod
+    def music(r, model, prompt, duration):
+        from . import free
+        instrumental = "instrumental" in prompt.lower() and "lyrics:" not in prompt.lower()
+        lyrics = prompt.split("Lyrics:", 1)[1].strip() if "Lyrics:" in prompt else "[instrumental]"
+        res = free.call(free.SPACES["music"], "/__call__", audio_duration=float(max(5, min(240, duration))), prompt=prompt.split("Lyrics:", 1)[0][:600],
+                        lyrics="[instrumental]" if instrumental else lyrics, infer_step=60, guidance_scale=15.0, scheduler_type="euler", cfg_type="apg",
+                        omega_scale=10.0, manual_seeds=None, guidance_interval=0.5, guidance_interval_decay=0.0, min_guidance_scale=3.0,
+                        use_erg_tag=True, use_erg_lyric=False, use_erg_diffusion=True, oss_steps=None, guidance_scale_text=0.0,
+                        guidance_scale_lyric=0.0, audio2audio_enable=False, ref_audio_strength=0.5, ref_audio_input=None, lora_name_or_path="none")
+        return [free.keep(r, free.path_of(res))]
+
+    @staticmethod
+    def sfx(r, model, prompt, duration):
+        from . import free
+        res = free.call(free.SPACES["sfx"], "/predict", prompt=prompt, seconds_total=float(max(1, min(47, duration))), steps=60, cfg_scale=7)
+        return [free.keep(r, free.path_of(res))]
+
+    @staticmethod
+    def upscale(r, model, image, scale):
+        from gradio_client import handle_file
+        from . import free
+        res = free.call(free.SPACES["upscale"], "/process", input_image=handle_file(str(image)), prompt="", negative_prompt="", seed=42,
+                        upscale_factor=float(max(1, min(4, scale))), controlnet_scale=0.6, controlnet_decay=1.0, condition_scale=6,
+                        tile_width=112, tile_height=144, denoise_strength=0.35, num_inference_steps=18, solver="DDIM")
+        after = res[1] if isinstance(res, (list, tuple)) and len(res) > 1 else res
+        return [free.keep(r, free.path_of(after))]
+
+    @staticmethod
+    def bg_remove(r, model, image):
+        from gradio_client import handle_file
+        from . import free
+        return [free.keep(r, free.path_of(free.call(free.SPACES["bg_remove"], "/png", f=handle_file(str(image)))), ".png")]
+
+    @staticmethod
+    def lipsync(r, model, video, audio):
+        from gradio_client import handle_file
+        from . import free
+        res = free.call(free.SPACES["lipsync"], "/generate_lip_sync_video", input_video_path=handle_file(str(video)), input_audio_path=handle_file(str(audio)))
+        return [free.keep(r, free.path_of(res), ".mp4")]
+
+    @staticmethod
+    def tts(r, model, text, voice, speed):
+        from . import free
+        if not free.LOCAL_TTS:
+            raise ProviderError("Kokoro voice model is not installed on this server")
+        kv = voice if voice in ("af_heart", "af_bella", "af_nicole", "af_sarah", "af_sky", "am_adam", "am_michael", "bf_emma", "bf_isabella", "bm_george", "bm_lewis") else \
+            ["af_heart", "am_michael", "bf_emma", "bm_george", "af_bella", "am_adam"][sum(map(ord, voice or "x")) % 6]
+        return [free.LOCAL_TTS(text, kv, speed)]
+
+    video_upscale = None  # falls back to the local ffmpeg upscale
+
+
+PROVIDERS = {"free": Free, "fal": Fal, "openai": OpenAI, "gemini": Gemini, "elevenlabs": ElevenLabs, "replicate": Replicate, "mock": Mock}

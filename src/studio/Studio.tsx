@@ -193,7 +193,7 @@ function ToolPage({ tool, cat, chars, preset, onSend, onLock, onConsumed }: { to
           {err && <p className="notice">{err}</p>}
           <div className="run-bar">
             <button className="primary big" disabled={busy} type="submit">{busy ? job?.progress || 'Working…' : `Generate`}</button>
-            <span className="muted small">Uses: {tool.caps.join(', ') || 'local tools only'}</span>
+            <Estimate tool={tool} />
           </div>
         </form>
         <section className="tool-out">
@@ -217,6 +217,16 @@ function ToolPage({ tool, cat, chars, preset, onSend, onLock, onConsumed }: { to
   )
 }
 
+function Estimate({ tool }: { tool: Tool }) {
+  const [e, setE] = useState<Awaited<ReturnType<typeof studio.estimate>> | null>(null)
+  useEffect(() => { if (tool.caps.length) studio.estimate(tool.id).then(setE).catch(() => null) }, [tool.id, tool.caps.length])
+  if (!tool.caps.length) return <span className="muted small">Runs locally · free</span>
+  if (!e) return null
+  const providers = [...new Set(e.calls.map(c => c.provider))].join(', ')
+  return <span className="muted small" title={e.calls.map(c => `${c.cap}: ${c.provider} · ${c.model}`).join('\n')}>
+    {e.placeholder ? 'Placeholder outputs (no provider for some steps)' : e.free ? '✓ Free · runs on free GPUs' : `≈ $${e.usd.toFixed(2)} per run`} · {providers}</span>
+}
+
 const summary = (j: Job) => { const v = Object.values(j.params).find(x => typeof x === 'string' && x.length > 3 && !x.startsWith('/media')) as string | undefined; return v ? v.slice(0, 70) : j.toolName }
 
 function JobView({ job, cat, onSend, onLock, onNext }: { job: Job; cat: Catalogue; onSend: (h: Handoff) => void; onLock: (d: Partial<Character> & { refUrl?: string }) => void; onNext: (n: { tool: string; set: Record<string, unknown> }) => void }) {
@@ -232,6 +242,7 @@ function JobView({ job, cat, onSend, onLock, onNext }: { job: Job; cat: Catalogu
         {job.finished && <span className="muted small">{(job.finished - job.created).toFixed(0)} s</span>}
         <span className="muted small">{job.usage.length} model calls · ${usd.toFixed(2)}</span>
         {providers.includes('mock') && <span className="pill warn">placeholder outputs — add a key in Models & keys</span>}
+        {providers.some(p => p.startsWith('free')) && <span className="pill ok">free</span>}
       </div>
       {job.status === 'running' && <div className="bar indet"><span /></div>}
       {job.error && <p className="notice">{job.error}</p>}
@@ -412,6 +423,24 @@ function UsagePage() {
 
 // ---------- settings ----------
 
+function FreeCard() {
+  const [f, setF] = useState<Awaited<ReturnType<typeof studio.freeStatus>> | null>(null)
+  useEffect(() => { studio.freeStatus().then(setF).catch(() => null) }, [])
+  if (!f) return null
+  return (
+    <div className="card">
+      <h4>Free tier {f.enabled ? <span className="pill ok">on</span> : <span className="pill">off</span>}</h4>
+      <p className="muted small">With no paid keys, every tool runs on free, commercially usable open models: media on public Hugging Face ZeroGPU Spaces, text and image understanding on {f.llm} in this server, voice on Kokoro. GPU time comes from Hugging Face's free daily quota, so heavy use pauses until it refills. Add <code>HF_TOKEN</code> as a Space secret to use your own account's quota, or add any paid key below and that capability switches to it.</p>
+      <div className="tbl-wrap"><table className="tbl"><tbody>
+        <tr><td>Text & vision model</td><td>{f.llm_loaded ? `loaded on ${f.llm_device}` : f.llm_error ? `not loaded: ${f.llm_error}` : 'loads on first use'}</td></tr>
+        <tr><td>Hugging Face token</td><td>{f.hf_token ? 'set (your quota)' : 'not set (shared anonymous quota)'}</td></tr>
+        <tr><td>Voice (Kokoro)</td><td>{f.kokoro ? 'ready' : 'not installed'}</td></tr>
+        {Object.entries(f.spaces).map(([cap, sp]) => <tr key={cap}><td>{cap}</td><td><a href={`https://huggingface.co/spaces/${sp}`} target="_blank" rel="noreferrer">{sp}</a></td></tr>)}
+      </tbody></table></div>
+    </div>
+  )
+}
+
 function SettingsPage({ prefs, setPrefs }: { prefs: ThemePrefs; setPrefs: (p: ThemePrefs) => void }) {
   const [s, setS] = useState<SettingsView | null>(null)
   const [keys, setKeys] = useState<Record<string, string>>({})
@@ -438,14 +467,16 @@ function SettingsPage({ prefs, setPrefs }: { prefs: ThemePrefs; setPrefs: (p: Th
         </div>
         <p className="muted small">Saved in this browser. To change the built-in palettes, edit <code>src/studio/themes.ts</code>.</p>
       </div>
+      <FreeCard />
       <div className="card">
         <h4>Providers {saved && <span className="pill ok">saved</span>}</h4>
         {s.providers.map(p => (
           <div key={p.id} className="prov">
             <strong>{p.id}</strong><span className={`pill ${p.configured ? 'ok' : ''}`}>{p.configured ? (p.fromEnv ? 'from env' : 'configured') : 'no key'}</span>
             <span className="muted small">{p.caps.join(', ')}</span>
-            <input type="password" placeholder={`${p.env}`} value={keys[p.id] ?? ''} onChange={e => setKeys({ ...keys, [p.id]: e.target.value })} />
-            <button onClick={() => save({ keys: { [p.id]: keys[p.id] ?? '' } }).then(() => setKeys({ ...keys, [p.id]: '' }))}>{keys[p.id] ? 'Save' : 'Clear'}</button>
+            {p.id === 'free' ? <><span className="muted small">No key needed</span><span /></> : <>
+              <input type="password" placeholder={`${p.env}`} value={keys[p.id] ?? ''} onChange={e => setKeys({ ...keys, [p.id]: e.target.value })} />
+              <button onClick={() => save({ keys: { [p.id]: keys[p.id] ?? '' } }).then(() => setKeys({ ...keys, [p.id]: '' }))}>{keys[p.id] ? 'Save' : 'Clear'}</button></>}
           </div>
         ))}
       </div>

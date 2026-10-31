@@ -28,6 +28,27 @@ WHISPER_COMPUTE = os.environ.get("OPENCAP_COMPUTE", "int8")
 
 app = FastAPI(title="Pulse API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+
+# Optional password for a public deployment: set OPENCAP_PASSWORD (e.g. as a Space secret) and browsers ask for it
+# (any username). Unset, the app stays open, as it is when run locally. /api/health stays open for uptime checks.
+_PASSWORD = os.environ.get("OPENCAP_PASSWORD")
+if _PASSWORD:
+    import base64, secrets
+    from starlette.responses import Response
+
+    @app.middleware("http")
+    async def _require_password(request, call_next):
+        if request.url.path == "/api/health":
+            return await call_next(request)
+        auth = request.headers.get("authorization", "")
+        try:
+            given = base64.b64decode(auth.split(" ", 1)[1]).decode().split(":", 1)[1] if auth.startswith("Basic ") else ""
+        except Exception:
+            given = ""
+        if secrets.compare_digest(given.encode(), _PASSWORD.encode()):
+            return await call_next(request)
+        return Response("Password required", 401, {"WWW-Authenticate": 'Basic realm="Pulse Studio"'})
 app.mount("/media", StaticFiles(directory=DATA), name="media")  # range requests supported
 
 
@@ -169,7 +190,7 @@ def get_model():
         return _model
 
 
-def transcribe_wav(wav: Path, language: Optional[str] = None) -> dict:
+def transcribe_wav(wav: Path, language: Optional[str] = None, vocab: Optional[str] = None) -> dict:
     """Word-level transcript of a 16 kHz mono wav."""
     model = get_model()
     # decode the wav ourselves: avoids faster-whisper's PyAV path, which breaks on newer av releases
@@ -177,6 +198,7 @@ def transcribe_wav(wav: Path, language: Optional[str] = None) -> dict:
     with wave.open(str(wav), "rb") as wf:
         pcm = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16).astype(np.float32) / 32768.0
     segments, info = model.transcribe(pcm, word_timestamps=True, vad_filter=True, language=language, beam_size=5,
+                                      initial_prompt=f"Vocabulary: {vocab}." if vocab else None,
                                       vad_parameters=dict(min_silence_duration_ms=300))
     words, segs = [], []
     for s in segments:
@@ -603,6 +625,10 @@ def _studio_tts(text: str, voice: str, speed: float) -> Path:
 from studio.api import make_router  # noqa: E402
 
 app.include_router(make_router(DATA, transcribe=transcribe_wav, local_tts=_studio_tts))
+
+from studio import free as _free  # noqa: E402
+
+_free.LOCAL_TTS = _studio_tts  # the Free provider's voice is the local Kokoro model
 
 
 # Built frontend (Docker / Hugging Face Space). Mounted last so every /api route above wins.

@@ -50,6 +50,8 @@ The home page is **Studio**, an open rebuild of the Spark Station tool set. `doc
 
 Results can be sent from any tool to the next one (an image becomes the first frame of a video, a shot list becomes a storyboard, a plan becomes a render). Everything lands in the **Assets library** and per-tool **History**, and every model call is logged on **Usage & spend**.
 
+**Free by default.** With no paid keys, every tool runs on free, commercially usable open models. Text and vision use Qwen3-VL-4B on the Space's ZeroGPU. Images, edits, video, music, SFX, upscaling, background removal and lip sync use public ZeroGPU Spaces. Voice uses Kokoro. `server/studio/free.py` lists them, and `docs/gap-report.md` covers limits and what's still missing. Set `HF_TOKEN` as a Space secret to use your own GPU quota, `OPENCAP_PASSWORD` to require a password, and `OPENCAP_FREE=0` to turn the free tier off.
+
 **Models are pluggable.** `server/studio/providers.py` routes each capability (text, vision, image, edit, video, TTS, music, SFX, upscale, face swap, try-on, inpaint, background removal, lip sync) to one of these providers:
 
 | Provider | Env var | Covers |

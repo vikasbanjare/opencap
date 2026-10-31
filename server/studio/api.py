@@ -283,6 +283,52 @@ def make_router(DATA: Path, media_prefix: str = "/media", transcribe=None, local
         settings.save(s)
         return settings.public()
 
+    @api.get("/estimate/{tool_id}")
+    def estimate(tool_id: str):
+        """Rough cost of one run before it starts: one call per capability the tool uses, on the provider it routes to."""
+        from .providers import COST
+        tool = T.TOOLS.get(tool_id)
+        if not tool:
+            raise HTTPException(404, "unknown tool")
+        rows = [dict(cap=c, provider=p, model=m, usd=0 if p in ("mock", "free") else COST.get(c, 0)) for c in tool.caps for p, m in [settings.route(c)]]
+        return {"usd": round(sum(r["usd"] for r in rows), 3), "free": all(r["provider"] == "free" for r in rows) and bool(rows),
+                "placeholder": any(r["provider"] == "mock" for r in rows), "calls": rows}
+
+    @api.get("/free/status")
+    def free_status():
+        from . import free
+        return free.status()
+
+    _selftest: dict = {}
+
+    @api.get("/selftest")
+    def selftest(token: str = "", caps: str = "llm,image,tts"):
+        """Runs one tiny job per capability on the Free provider. Needs ?token= matching the OPENCAP_SELFTEST variable."""
+        want = os.environ.get("OPENCAP_SELFTEST")
+        if not want or token != want:
+            raise HTTPException(403, "set the OPENCAP_SELFTEST variable and pass ?token=")
+        from PIL import Image
+        out = Out(S / "files" / "selftest", "")
+        r = Router(settings, out, lambda rec: None)
+        img = out.path(".png"); Image.new("RGB", (512, 512), (40, 90, 160)).save(img)
+        mask = out.path(".png"); Image.new("L", (512, 512), 0).save(mask)
+        tests = {"llm": lambda: r.llm("Say ok.", provider="free")[:60], "vision": lambda: r.llm("What colour is this?", images=[img], provider="free")[:60],
+                 "image": lambda: r.image("a red apple on a table", aspect="1:1", provider="free"), "edit": lambda: r.image("make it orange", refs=[img], provider="free"),
+                 "video": lambda: r.video("waves on a beach", aspect="16:9", duration=2, provider="free"), "music": lambda: r.music("calm piano, instrumental", 10, provider="free"),
+                 "sfx": lambda: r.sfx("door knock", 2, provider="free"), "upscale": lambda: r.upscale(img, 2, provider="free"),
+                 "bg_remove": lambda: r.bg_remove(img, provider="free"), "tts": lambda: r.tts("Hello from Pulse Studio.", provider="free"),
+                 "inpaint": lambda: r.inpaint(img, mask, "add a small star", provider="free")}
+        res = {}
+        for c in [x for x in caps.split(",") if x in tests]:
+            t0 = time.time()
+            try:
+                v = tests[c](); res[c] = {"ok": True, "seconds": round(time.time() - t0, 1), "result": [url_of(p) for p in v] if isinstance(v, list) else v,
+                                          "provider": getattr(r, "last", {}).get("provider")}
+            except Exception as e:
+                res[c] = {"ok": False, "seconds": round(time.time() - t0, 1), "error": f"{type(e).__name__}: {str(e)[:300]}"}
+        _selftest.update(res)
+        return res
+
     @api.get("/usage")
     def usage():
         rows = []

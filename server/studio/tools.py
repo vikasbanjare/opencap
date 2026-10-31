@@ -991,7 +991,8 @@ VIDEO_RES = ["480p", "720p", "1080p", "4K"]
 
 @tool("video_generation", "Video Generation", "video", "🎥", "Directed cinematic clips across every leading video model",
       "Prompt, or prompt plus a start frame (and optional end frame or reference clip), to a clip of up to 15 s. Camera rig (body, lens, focal length, aperture), a cinematic movement library, style presets, native audio, and a multi-model run to pick the best take. Locked characters carry in.",
-      [F("prompt", "Prompt", "textarea", required=True, placeholder="She turns from the window as the train passes; rain on glass."), IMPROVE,
+      [F("prompt", "Prompt", "textarea", required=True, placeholder="She turns from the window as the train passes; rain on glass.",
+         snippets=["Dialogue: NAME says, \"…\"", "SFX: ", "Ambient noise: ", "golden-hour backlight", "shallow depth of field"]), IMPROVE,
        F("image", "Start frame", "image"), F("end_image", "End frame", "image"), F("ref_video", "Reference clip (style & motion)", "video"), CHARS,
        S("camera", "Camera body", CAMERA_BODIES, group="Camera rig"), S("lens", "Lens character", LENSES, group="Camera rig"), S("focal", "Focal length", FOCALS, group="Camera rig"),
        S("aperture", "Aperture", APERTURES, group="Camera rig"), C("movement", "Camera movement", MOVES, default=["Slow Push In"], group="Camera rig"), S("style", "Style preset", VIDEO_STYLES),
@@ -1058,7 +1059,8 @@ def t_voice(ctx, script, engine, voice, kvoice, language, preset, style, speed, 
 
 @tool("music", "Music", "audio", "🎵", "Score, jingles and full songs with vocals",
       "Describe genre, mood, instruments, BPM and key (with [0:00-0:20] timestamp sections), choose instrumental or vocals with lyrics, fixed or random seed. 30 s clips to ~3 minute songs.",
-      [F("prompt", "Prompt", "textarea", required=True, placeholder="[0:00-0:20]: lo-fi intro, warm bass; [0:20-0:45]: violin and flute melody, 84 BPM, D minor"),
+      [F("prompt", "Prompt", "textarea", required=True, placeholder="[0:00-0:20]: lo-fi intro, warm bass; [0:20-0:45]: violin and flute melody, 84 BPM, D minor",
+         snippets=["[0:00-0:20]: ", "90 BPM", "in D minor", "intensity: building", "instrumental", "drop to silence before the chorus"]),
        S("tier", "Model", [{"value": "clip", "label": "Clip · 30 s"}, {"value": "pro", "label": "Pro · up to ~3 min, structure, vocals"}], "pro"),
        F("duration", "Length (s)", "slider", min=10, max=180, default=60), F("negative", "Negative prompt", placeholder="no drums"),
        S("vocals", "Vocal mode", ["Instrumental", "With vocals"]), F("lyrics", "Vocal instructions / lyrics", "textarea", showIf={"vocals": ["With vocals"]},
@@ -1536,7 +1538,7 @@ def t_subtitles(ctx, media, srt, language, rhythm, max_chars, vocab, cues, censo
         ctx.progress("Extracting audio & transcribing")
         wav = ctx.file(".wav")
         M.sh(["ffmpeg", "-v", "error", "-y", "-i", str(media), "-vn", "-ac", "1", "-ar", "16000", str(wav)])
-        tr = ctx.transcribe(wav, language or None)
+        tr = ctx.transcribe(wav, language or None, vocab or None)  # names and jargon spelled as you give them
         lang = tr.get("language", "")
         info0 = M.probe(media); vertical = info0["height"] > info0["width"] * 1.3
         caps = cues_from_words(tr["words"], rhythm, min(int(max_chars), 25) if vertical else int(max_chars), 3 if vertical else 2)

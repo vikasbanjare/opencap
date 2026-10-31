@@ -8,6 +8,7 @@ export type Field = {
   options?: (string | { value: string; label: string })[]
   default?: unknown; min?: number; max?: number; step?: number
   help?: string; placeholder?: string; required?: boolean; group?: string
+  snippets?: string[] // one-click inserts shown under a textarea
   showIf?: Record<string, unknown[]>
 }
 
@@ -66,6 +67,8 @@ export const studio = {
   updateFilm: (id: string, p: Partial<Film>) => fetch(`${B}/films/${id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(p) }).then(j<Film>),
   deleteFilm: (id: string) => fetch(`${B}/films/${id}`, { method: 'DELETE' }).then(j),
   usage: () => fetch(`${B}/usage`).then(j<Usage>),
+  estimate: (tool: string) => fetch(`${B}/estimate/${tool}`).then(j<{ usd: number; free: boolean; placeholder: boolean; calls: { cap: string; provider: string; model: string; usd: number }[] }>),
+  freeStatus: () => fetch(`${B}/free/status`).then(j<{ enabled: boolean; llm: string; llm_loaded: boolean; llm_device: string; llm_error: string | null; hf_token: boolean; spaces: Record<string, string>; kokoro: boolean }>),
 }
 
 /** Poll a job until it finishes. */

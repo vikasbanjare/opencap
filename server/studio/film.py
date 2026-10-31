@@ -379,7 +379,41 @@ def film_final(ctx, film, title_card, credits, music_db, sfx_db, burn, director,
     f["final"] = {"url": ctx.url_of(movie), "srt": ctx.url_of(sub), "duration": round(M.probe(movie)["duration"], 1)}
     ctx.store.save_film(f)
     slug = re.sub(r"\W+", "-", f.get("title", "film")).strip("-").lower() or "film"
-    return [(f"{f.get('title')} · {f['final']['duration']}s", movie), (f"{slug}.srt", sub), (f"{slug}.fountain", ctx.text_file(to_fountain(f.get("title", ""), f["scenes"]), ".fountain"))]
+    ctx.progress("Writing the NLE hand-off")
+    handoff = nle_package(ctx, f, parts, slug, W, H, sub)
+    return [(f"{f.get('title')} · {f['final']['duration']}s", movie), (f"{slug}.srt", sub), (f"{slug}.fountain", ctx.text_file(to_fountain(f.get("title", ""), f["scenes"]), ".fountain")),
+            (f"{slug}-nle-handoff.zip", handoff)]
+
+
+def tc(sec: float, fps: int = 30) -> str:
+    fr = int(round(sec * fps)); return f"{fr // (3600 * fps):02}:{fr // (60 * fps) % 60:02}:{fr // fps % 60:02}:{fr % fps:02}"
+
+
+def nle_package(ctx, f: dict, parts: list[Path], slug: str, W: int, H: int, sub: Path, fps: int = 30) -> Path:
+    """Zip with the cut as CMX3600 EDL and FCPXML (Final Cut Pro, DaVinci Resolve; Premiere imports both), the media and subtitles."""
+    import zipfile
+    from xml.sax.saxutils import escape as e
+    names = [f"{k:02d}_{'title' if k == 0 and len(parts) > len(f['scenes']) else 'clip'}.mp4" for k in range(len(parts))]
+    durs = [M.probe(p)["duration"] for p in parts]
+    edl, rec = [f"TITLE: {f.get('title', slug).upper()}", "FCM: NON-DROP FRAME", ""], 0.0
+    for k, (n, d) in enumerate(zip(names, durs), 1):
+        edl += [f"{k:03d}  {('AX' + str(k))[:8]:<8} AA/V  C        {tc(0)} {tc(d)} {tc(rec)} {tc(rec + d)}", f"* FROM CLIP NAME: {n}", ""]; rec += d
+    fd = f"{1}/{fps}s"
+    assets = "".join(f'<asset id="r{k + 2}" name="{e(n)}" start="0s" duration="{round(d * fps)}/{fps}s" hasVideo="1" hasAudio="1" format="r1">'
+                     f'<media-rep kind="original-media" src="media/{e(n)}"/></asset>' for k, (n, d) in enumerate(zip(names, durs)))
+    off, clips = 0, ""
+    for k, (n, d) in enumerate(zip(names, durs)):
+        fr = round(d * fps); clips += f'<asset-clip ref="r{k + 2}" name="{e(n)}" offset="{off}/{fps}s" start="0s" duration="{fr}/{fps}s"/>'; off += fr
+    fcp = (f'<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE fcpxml>\n<fcpxml version="1.10"><resources><format id="r1" name="FFVideoFormat{H}p{fps}" frameDuration="{fd}" width="{W}" height="{H}"/>'
+           f'{assets}</resources><library><event name="{e(f.get("title", slug))}"><project name="{e(f.get("title", slug))}"><sequence format="r1" duration="{off}/{fps}s" tcStart="0s">'
+           f'<spine>{clips}</spine></sequence></project></event></library></fcpxml>\n')
+    z = ctx.file(".zip")
+    with zipfile.ZipFile(z, "w", zipfile.ZIP_STORED) as zf:
+        zf.writestr(f"{slug}.edl", "\n".join(edl) + "\n"); zf.writestr(f"{slug}.fcpxml", fcp); zf.write(sub, f"{slug}.srt")
+        for p, n in zip(parts, names):
+            zf.write(p, f"media/{n}")
+        zf.writestr("README.txt", "Import the .fcpxml into Final Cut Pro or DaVinci Resolve, or the .edl into Premiere Pro / Resolve, and relink to the media/ folder.\n")
+    return z
 
 
 DUB_LANGS = ["Hindi", "English", "Spanish", "Portuguese", "French", "German", "Italian", "Arabic", "Indonesian", "Japanese", "Korean", "Chinese", "Turkish", "Russian",
