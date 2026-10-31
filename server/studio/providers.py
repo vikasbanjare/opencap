@@ -799,8 +799,10 @@ class Cloudflare:
 
     @staticmethod
     def _base(r):
-        key = r.s.key("cloudflare") or ""
-        acct, tok = key.split(":", 1) if ":" in key else (os.environ.get("CLOUDFLARE_ACCOUNT_ID", ""), key)
+        import re
+        clean = lambda v: re.sub(r"[^\x21-\x7e]", "", v or "")  # pasted secrets often carry spaces, newlines or U+2028
+        key = clean(r.s.key("cloudflare"))
+        acct, tok = key.split(":", 1) if ":" in key else (clean(os.environ.get("CLOUDFLARE_ACCOUNT_ID")), key)
         if not acct:
             raise ProviderError("Cloudflare needs CLOUDFLARE_ACCOUNT_ID (or save the key as ACCOUNT_ID:TOKEN)")
         return f"https://api.cloudflare.com/client/v4/accounts/{acct}/ai", {"Authorization": f"Bearer {tok}"}
